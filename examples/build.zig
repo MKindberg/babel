@@ -7,11 +7,11 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
     });
 
-    // Add the dependency towards lsfw
-    const lsfw = b.dependency("lsfw", .{});
+    // Add the dependency towards babel
+    const babel = b.dependency("babel", .{});
 
-    // Allow the server to import the lsp module from lsfw
-    const lsp = lsfw.module("lsp");
+    // Allow the server to import the lsp module from babel
+    const lsp = babel.module("lsp");
     exe.root_module.addImport("lsp", lsp);
 
     b.installArtifact(exe);
@@ -22,6 +22,6 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("plugin_generator.zig"),
         .target = b.host,
     });
-    plugin_generator.root_module.addImport("lsp_plugins", lsfw.module("plugins"));
+    plugin_generator.root_module.addImport("lsp_plugins", babel.module("plugins"));
     b.step("gen_plugins", "Generate plugins").dependOn(&b.addRunArtifact(plugin_generator).step);
 }

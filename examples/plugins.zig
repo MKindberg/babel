@@ -12,8 +12,8 @@ pub fn main() !void {
         .description = "Description",
         .publisher = "mkindberg",
         .languages = &[_][]const u8{"zig"},
-        .repository = "https://github.com/mkindberg/zig-lsfw",
-        .source_id = "pkg:github/mkindberg/zig-lsfw",
+        .repository = "https://github.com/mkindberg/babel",
+        .source_id = "pkg:github/mkindberg/babel",
         .version = "0.1.0",
         .license = "MIT",
     };

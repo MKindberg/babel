@@ -14,7 +14,7 @@ pub fn main() !u8 {
 
     const server_data = lsp.types.ServerData{
         .serverInfo = .{
-            .name = "zlsfw",
+            .name = "babel-ls",
             .version = "0.1.0",
         },
     };

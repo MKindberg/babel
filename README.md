@@ -1,4 +1,4 @@
-# zig-lsfw
+# babel
 A framework for writing, or at least prototyping, language servers in Zig.
 It allows you to register callbacks that will be called when notifications or
 requests are received. In addition to this it will also keep track of and automatically
@@ -93,11 +93,11 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
     });
 
-    // Add the dependency towards lsfw
-    const lsfw = b.dependency("lsfw", .{});
+    // Add the dependency towards babel
+    const babel = b.dependency("babel", .{});
 
-    // Allow the server to import the lsp module from lsfw
-    const lsp = lsfw.module("lsp");
+    // Allow the server to import the lsp module from babel
+    const lsp = babel.module("lsp");
     exe.root_module.addImport("lsp", lsp);
 
     b.installArtifact(exe);
@@ -108,7 +108,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("plugin_generator.zig"),
         .target = b.host,
     });
-    plugin_generator.root_module.addImport("lsp_plugins", lsfw.module("plugins"));
+    plugin_generator.root_module.addImport("lsp_plugins", babel.module("plugins"));
     b.step("gen_plugins", "Generate plugins").dependOn(&b.addRunArtifact(plugin_generator).step);
 }
 ```
@@ -129,8 +129,8 @@ pub fn main() !void {
         .description = "Description",
         .publisher = "mkindberg",
         .languages = &[_][]const u8{"zig"},
-        .repository = "https://github.com/mkindberg/zig-lsfw",
-        .source_id = "pkg:github/mkindberg/zig-lsfw",
+        .repository = "https://github.com/mkindberg/babel",
+        .source_id = "pkg:github/mkindberg/babel",
         .version = "0.1.0",
         .license = "MIT",
     };

@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
 
     // Create helper server
     const helper = b.addExecutable(.{
-        .name = "zlsfw",
+        .name = "babel",
         .root_source_file = b.path("language-server/main.zig"),
         .target = target,
         .optimize = optimize,
