@@ -26,6 +26,9 @@ pub fn Lsp(comptime StateType: type) type {
 
         const CompletionCallback = fn (arena: std.mem.Allocator, context: *Context, position: types.Position) ?types.CompletionList;
 
+        const FormattingCallback = fn (arena: std.mem.Allocator, context: *Context, options: types.FormattingOptions) ?[]const types.TextEdit;
+        const RangeFormattingCallback = fn (arena: std.mem.Allocator, context: *Context, range: types.Range, options: types.FormattingOptions) ?[]const types.TextEdit;
+
         callback_doc_open: ?*const OpenDocumentCallback = null,
         callback_doc_change: ?*const ChangeDocumentCallback = null,
         callback_doc_save: ?*const SaveDocumentCallback = null,
@@ -40,6 +43,9 @@ pub fn Lsp(comptime StateType: type) type {
         callback_find_references: ?*const FindReferencesCallback = null,
 
         callback_completion: ?*const CompletionCallback = null,
+
+        callback_formatting: ?*const FormattingCallback = null,
+        callback_range_formatting: ?*const RangeFormattingCallback = null,
 
         contexts: std.StringHashMap(Context),
         server_data: types.ServerData,
@@ -143,6 +149,16 @@ pub fn Lsp(comptime StateType: type) type {
             self.callback_completion = callback;
             self.server_data.capabilities.completionProvider = .{};
             logger.trace("Registered completion callback", .{});
+        }
+        pub fn registerFormattingCallback(self: *Self, callback: *const FormattingCallback) void {
+            self.callback_formatting = callback;
+            self.server_data.capabilities.documentFormattingProvider = true;
+            logger.trace("Registered formatting callback", .{});
+        }
+        pub fn registerRangeFormattingCallback(self: *Self, callback: *const RangeFormattingCallback) void {
+            self.callback_range_formatting = callback;
+            self.server_data.capabilities.documentRangeFormattingProvider = true;
+            logger.trace("Registered range formatting callback", .{});
         }
 
         pub fn start(self: *Self) !u8 {
@@ -338,6 +354,30 @@ pub fn Lsp(comptime StateType: type) type {
                             types.Response.Completion{ .id = parsed.id, .result = items }
                         else
                             types.Response.Completion{ .id = parsed.id };
+                        try self.writeResponse(arena.allocator(), response);
+                    }
+                },
+                rpc.MethodType.@"textDocument/formatting" => {
+                    if (self.callback_formatting) |callback| {
+                        const parsed = try std.json.parseFromSliceLeaky(types.Request.Formatting, arena.allocator(), msg.content, .{ .ignore_unknown_fields = true });
+                        const params = parsed.params;
+                        const context = self.contexts.getPtr(params.textDocument.uri).?;
+                        const response = if (callback(arena.allocator(), context, params.options)) |items|
+                            types.Response.Formatting{ .id = parsed.id, .result = items }
+                        else
+                            types.Response.Formatting{ .id = parsed.id };
+                        try self.writeResponse(arena.allocator(), response);
+                    }
+                },
+                rpc.MethodType.@"textDocument/rangeFormatting" => {
+                    if (self.callback_range_formatting) |callback| {
+                        const parsed = try std.json.parseFromSliceLeaky(types.Request.RangeFormatting, arena.allocator(), msg.content, .{ .ignore_unknown_fields = true });
+                        const params = parsed.params;
+                        const context = self.contexts.getPtr(params.textDocument.uri).?;
+                        const response = if (callback(arena.allocator(), context, params.range, params.options)) |items|
+                            types.Response.Formatting{ .id = parsed.id, .result = items }
+                        else
+                            types.Response.Formatting{ .id = parsed.id };
                         try self.writeResponse(arena.allocator(), response);
                     }
                 },

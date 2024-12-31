@@ -72,6 +72,31 @@ pub const Request = struct {
             };
         };
     };
+
+    pub const Formatting = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: i32,
+        method: []const u8 = "textDocument/formatting",
+        params: Params,
+
+        pub const Params = struct {
+            textDocument: TextDocumentIdentifier,
+            options: FormattingOptions,
+        };
+    };
+
+    pub const RangeFormatting = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: i32,
+        method: []const u8 = "textDocument/rangeFormatting",
+        params: Params,
+
+        pub const Params = struct {
+            textDocument: TextDocumentIdentifier,
+            range: Range,
+            options: FormattingOptions,
+        };
+    };
 };
 
 pub const Response = struct {
@@ -192,6 +217,12 @@ pub const Response = struct {
         jsonrpc: []const u8 = "2.0",
         id: i32,
         result: ?CompletionList = null,
+    };
+
+    pub const Formatting = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: i32,
+        result: []const TextEdit = &[_]TextEdit{},
     };
 };
 
@@ -321,6 +352,8 @@ pub const ServerData = struct {
         typeDefinitionProvider: bool = false,
         implementationProvider: bool = false,
         referencesProvider: bool = false,
+        documentFormattingProvider: bool = false,
+        documentRangeFormattingProvider: bool = false,
         completionProvider: ?struct {} = .{},
     };
     const ServerInfo = struct {
@@ -587,4 +620,12 @@ pub const CodeActionKind = enum {
 pub const CodeActionContext = struct {
     diagnostics: []const Diagnostic,
     only: ?[]CodeActionKind = null,
+};
+
+pub const FormattingOptions = struct {
+    tabSize: u32,
+    insertSpaces: bool,
+    trimTrailingWhitespace: ?bool = null,
+    insertFinalNewline: ?bool = null,
+    trimFinalNewlines: ?bool = null,
 };
