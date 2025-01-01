@@ -75,10 +75,12 @@ pub const Document = struct {
         return offset + pos.character;
     }
 
+    /// Find all occurrences of pattern within the document.
     pub fn find(self: Document, pattern: []const u8) FindIterator {
         return FindIterator.init(self.text, pattern);
     }
 
+    /// Find all occurrences of pattern within range.
     pub fn findInRange(self: Document, range: types.Range, pattern: []const u8) FindIterator {
         var start_idx = posToIdx(self.text, range.start).?;
         start_idx -= @min(start_idx, pattern.len);
@@ -89,6 +91,7 @@ pub const Document = struct {
         return FindIterator.initWithOffset(self.text, pattern, start_idx, end_idx);
     }
 
+    /// Get the line containing pos.
     pub fn getLine(self: Document, pos: types.Position) ?[]const u8 {
         const idx = posToIdx(self.text, pos) orelse return null;
         const start = if (std.mem.lastIndexOfScalar(u8, self.text[0..idx], '\n')) |s| s + 1 else 0;
@@ -97,10 +100,22 @@ pub const Document = struct {
         return self.text[start..end];
     }
 
+    /// Get the word containing pos, a word is anything surrounded by the characters in delimiter.
     pub fn getWord(self: Document, pos: types.Position, delimiter: []const u8) ?[]const u8 {
         const idx = posToIdx(self.text, pos) orelse return null;
         const start = if (std.mem.lastIndexOfAny(u8, self.text[0..idx], delimiter)) |i| i + 1 else 0;
         const end = std.mem.indexOfAnyPos(u8, self.text, idx, delimiter) orelse self.text.len;
+        return self.text[start..end];
+    }
+
+    /// Get the text in the specified range. Return null if range.start isn't in the document
+    /// or if end > start. Returns the rest of the document if end is larger than document.len
+    pub fn getRange(self: Document, range: types.Range) ?[]const u8 {
+        const start = Document.posToIdx(self.text, range.start) orelse return null;
+        const end = Document.posToIdx(self.text, range.end) orelse self.text.len;
+        if (end < start) {
+            return null;
+        }
         return self.text[start..end];
     }
 };
