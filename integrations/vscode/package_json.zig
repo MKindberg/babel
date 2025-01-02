@@ -34,7 +34,7 @@ const PackageJson = struct {
     repository: []const u8 = "",
     version: []const u8 = "0.0.1",
     publisher: []const u8,
-    engines: struct { vscode: []const u8 = "1.90.0" } = .{},
+    engines: struct { vscode: []const u8 = "^1.90.0" } = .{},
     categories: []const []const u8 = &.{"Language Server"},
     activationEvents: []const []const u8,
     main: []const u8 = "./extension.js",
