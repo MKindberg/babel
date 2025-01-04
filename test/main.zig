@@ -43,47 +43,47 @@ pub fn main() !u8 {
     return try server.start();
 }
 
-fn handleOpenDoc(_: std.mem.Allocator, context: *Lsp.Context) void {
+fn handleOpenDoc(p: Lsp.OpenDocumentParameters) void {
     const file = std.fs.cwd().createFile("output.txt", .{ .truncate = true }) catch unreachable;
-    context.state = file;
-    _ = context.state.?.write("Opened document\n") catch unreachable;
+    p.context.state = file;
+    _ = p.context.state.?.write("Opened document\n") catch unreachable;
 }
-fn handleCloseDoc(_: std.mem.Allocator, context: *Lsp.Context) void {
-    _ = context.state.?.write("Closed document\n") catch unreachable;
-    context.state.?.close();
+fn handleCloseDoc(p: Lsp.CloseDocumentParameters) void {
+    _ = p.context.state.?.write("Closed document\n") catch unreachable;
+    p.context.state.?.close();
 }
-fn handleChangeDoc(_: std.mem.Allocator, context: *Lsp.Context, _: []lsp.types.ChangeEvent) void {
-    _ = context.state.?.write("Changed document\n") catch unreachable;
+fn handleChangeDoc(p: Lsp.ChangeDocumentParameters) void {
+    _ = p.context.state.?.write("Changed document\n") catch unreachable;
 }
-fn handleSaveDoc(_: std.mem.Allocator, context: *Lsp.Context) void {
-    _ = context.state.?.write("Saved document\n") catch unreachable;
+fn handleSaveDoc(p: Lsp.SaveDocumentParameters) void {
+    _ = p.context.state.?.write("Saved document\n") catch unreachable;
 }
-fn handleHover(_: std.mem.Allocator, context: *Lsp.Context, _: lsp.types.Position) ?[]const u8 {
-    _ = context.state.?.write("Hover\n") catch unreachable;
+fn handleHover(p: Lsp.HoverParameters) ?[]const u8 {
+    _ = p.context.state.?.write("Hover\n") catch unreachable;
     return null;
 }
-fn handleCodeAction(_: std.mem.Allocator, context: *Lsp.Context, _: lsp.types.Range) ?[]const lsp.types.Response.CodeAction.Result {
-    _ = context.state.?.write("Code action\n") catch unreachable;
+fn handleCodeAction(p: Lsp.CodeActionParameters) ?[]const lsp.types.Response.CodeAction.Result {
+    _ = p.context.state.?.write("Code action\n") catch unreachable;
     return null;
 }
-fn handleGoToDeclaration(_: std.mem.Allocator, context: *Lsp.Context, _: lsp.types.Position) ?lsp.types.Location {
-    _ = context.state.?.write("Go to declaration\n") catch unreachable;
+fn handleGoToDeclaration(p: Lsp.GoToDeclarationParameters) ?lsp.types.Location {
+    _ = p.context.state.?.write("Go to declaration\n") catch unreachable;
     return null;
 }
-fn handleGotoDefinition(_: std.mem.Allocator, context: *Lsp.Context, _: lsp.types.Position) ?lsp.types.Location {
-    _ = context.state.?.write("Go to definition\n") catch unreachable;
+fn handleGotoDefinition(p: Lsp.GoToDefinitionParameters) ?lsp.types.Location {
+    _ = p.context.state.?.write("Go to definition\n") catch unreachable;
     return null;
 }
-fn handleGoToTypeDefinition(_: std.mem.Allocator, context: *Lsp.Context, _: lsp.types.Position) ?lsp.types.Location {
-    _ = context.state.?.write("Go to type definition\n") catch unreachable;
+fn handleGoToTypeDefinition(p: Lsp.GoToTypeDefinitionParameters) ?lsp.types.Location {
+    _ = p.context.state.?.write("Go to type definition\n") catch unreachable;
     return null;
 }
-fn handleGoToImplementation(_: std.mem.Allocator, context: *Lsp.Context, _: lsp.types.Position) ?lsp.types.Location {
-    _ = context.state.?.write("Go to implementation\n") catch unreachable;
+fn handleGoToImplementation(p: Lsp.GoToImplementationParameters) ?lsp.types.Location {
+    _ = p.context.state.?.write("Go to implementation\n") catch unreachable;
     return null;
 }
-fn handleFindReferences(_: std.mem.Allocator, context: *Lsp.Context, _: lsp.types.Position) ?[]lsp.types.Location {
-    _ = context.state.?.write("Find references\n") catch unreachable;
+fn handleFindReferences(p: Lsp.FindReferencesParameters) ?[]lsp.types.Location {
+    _ = p.context.state.?.write("Find references\n") catch unreachable;
     return null;
 }
 

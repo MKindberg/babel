@@ -10,24 +10,62 @@ const Reader = @import("reader.zig").Reader;
 
 pub fn Lsp(comptime StateType: type) type {
     return struct {
-        const OpenDocumentCallback = fn (arena: std.mem.Allocator, context: *Context) void;
-        const ChangeDocumentCallback = fn (arena: std.mem.Allocator, context: *Context, changes: []types.ChangeEvent) void;
-        const SaveDocumentCallback = fn (arena: std.mem.Allocator, context: *Context) void;
-        const CloseDocumentCallback = fn (arena: std.mem.Allocator, context: *Context) void;
 
-        const HoverCallback = fn (arena: std.mem.Allocator, context: *Context, position: types.Position) ?[]const u8;
-        const CodeActionCallback = fn (arena: std.mem.Allocator, context: *Context, range: types.Range) ?[]const types.Response.CodeAction.Result;
+        pub const OpenDocumentParameters = struct { arena: std.mem.Allocator, context: *Context };
+        pub const OpenDocumentReturn = void;
+        const OpenDocumentCallback = fn (_: OpenDocumentParameters) OpenDocumentReturn;
 
-        const GoToDefinitionCallback = fn (arena: std.mem.Allocator, context: *Context, position: types.Position) ?types.Location;
-        const GoToDeclarationCallback = fn (arena: std.mem.Allocator, context: *Context, position: types.Position) ?types.Location;
-        const GoToTypeDefinitionCallback = fn (arena: std.mem.Allocator, context: *Context, position: types.Position) ?types.Location;
-        const GoToImplementationCallback = fn (arena: std.mem.Allocator, context: *Context, position: types.Position) ?types.Location;
-        const FindReferencesCallback = fn (arena: std.mem.Allocator, context: *Context, position: types.Position) ?[]const types.Location;
+        pub const ChangeDocumentParameters = struct { arena: std.mem.Allocator, context: *Context, changes: []types.ChangeEvent };
+        pub const ChangeDocumentReturn = void;
+        const ChangeDocumentCallback = fn (_: ChangeDocumentParameters) ChangeDocumentReturn;
 
-        const CompletionCallback = fn (arena: std.mem.Allocator, context: *Context, position: types.Position) ?types.CompletionList;
+        pub const SaveDocumentParameters = struct { arena: std.mem.Allocator, context: *Context };
+        pub const SaveDocumentReturn = void;
+        const SaveDocumentCallback = fn (_: SaveDocumentParameters) SaveDocumentReturn;
 
-        const FormattingCallback = fn (arena: std.mem.Allocator, context: *Context, options: types.FormattingOptions) ?[]const types.TextEdit;
-        const RangeFormattingCallback = fn (arena: std.mem.Allocator, context: *Context, range: types.Range, options: types.FormattingOptions) ?[]const types.TextEdit;
+        pub const CloseDocumentParameters = struct { arena: std.mem.Allocator, context: *Context };
+        pub const CloseDocumentReturn = void;
+        const CloseDocumentCallback = fn (_: CloseDocumentParameters) CloseDocumentReturn;
+
+        pub const HoverParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
+        pub const HoverReturn = ?[]const u8;
+        const HoverCallback = fn (_: HoverParameters) HoverReturn;
+
+        pub const CodeActionParameters = struct { arena: std.mem.Allocator, context: *Context, range: types.Range };
+        pub const CodeActionReturn = ?[]const types.Response.CodeAction.Result;
+        const CodeActionCallback = fn (_: CodeActionParameters) CodeActionReturn;
+
+        pub const GoToDefinitionParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
+        pub const GoToDefinitionReturn = ?types.Location;
+        const GoToDefinitionCallback = fn (_: GoToDefinitionParameters) GoToDefinitionReturn;
+
+        pub const GoToDeclarationParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
+        pub const GoToDeclarationReturn = ?types.Location;
+        const GoToDeclarationCallback = fn (_: GoToDeclarationParameters) GoToDeclarationReturn;
+
+        pub const GoToTypeDefinitionParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
+        pub const GoToTypeDefinitionReturn = ?types.Location;
+        const GoToTypeDefinitionCallback = fn (_: GoToTypeDefinitionParameters) GoToTypeDefinitionReturn;
+
+        pub const GoToImplementationParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
+        pub const GoToImplementationReturn = ?types.Location;
+        const GoToImplementationCallback = fn (_: GoToImplementationParameters) GoToImplementationReturn;
+
+        pub const FindReferencesParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
+        pub const FindReferencesReturn = ?[]const types.Location;
+        const FindReferencesCallback = fn (_: FindReferencesParameters) FindReferencesReturn;
+
+        pub const CompletionParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
+        pub const CompletionReturn = ?types.CompletionList;
+        const CompletionCallback = fn (_: CompletionParameters) CompletionReturn;
+
+        pub const FormattingParameters = struct { arena: std.mem.Allocator, context: *Context, options: types.FormattingOptions };
+        pub const FormattingReturn = ?[]const types.TextEdit;
+        const FormattingCallback = fn (_: FormattingParameters) FormattingReturn;
+
+        pub const RangeFormattingParameters = struct { arena: std.mem.Allocator, context: *Context, range: types.Range, options: types.FormattingOptions };
+        pub const RangeFormattingReturn = ?[]const types.TextEdit;
+        const RangeFormattingCallback = fn (_: RangeFormattingParameters) RangeFormattingReturn;
 
         callback_doc_open: ?*const OpenDocumentCallback = null,
         callback_doc_change: ?*const ChangeDocumentCallback = null,
@@ -240,7 +278,7 @@ pub fn Lsp(comptime StateType: type) type {
 
                     if (self.callback_doc_open) |callback| {
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        callback(arena.allocator(), context);
+                        callback(.{ .arena = arena.allocator(), .context = context });
                     }
                 },
                 rpc.MethodType.@"textDocument/didChange" => {
@@ -253,7 +291,7 @@ pub fn Lsp(comptime StateType: type) type {
 
                     if (self.callback_doc_change) |callback| {
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        callback(arena.allocator(), context, params.contentChanges);
+                        callback(.{ .arena = arena.allocator(), .context = context, .changes = params.contentChanges });
                     }
                 },
                 rpc.MethodType.@"textDocument/didSave" => {
@@ -262,7 +300,7 @@ pub fn Lsp(comptime StateType: type) type {
                     const params = parsed.params;
                     if (self.callback_doc_save) |callback| {
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        callback(arena.allocator(), context);
+                        callback(.{ .arena = arena.allocator(), .context = context });
                     }
                 },
                 rpc.MethodType.@"textDocument/didClose" => {
@@ -272,7 +310,7 @@ pub fn Lsp(comptime StateType: type) type {
 
                     if (self.callback_doc_close) |callback| {
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        callback(arena.allocator(), context);
+                        callback(.{ .arena = arena.allocator(), .context = context });
                     }
 
                     closeDocument(self, params.textDocument.uri);
@@ -284,7 +322,7 @@ pub fn Lsp(comptime StateType: type) type {
                         const params = parsed.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
 
-                        const response = if (callback(arena.allocator(), context, params.position)) |message|
+                        const response = if (callback(.{ .arena = arena.allocator(), .context = context, .position = params.position })) |message|
                             types.Response.Hover.init(parsed.id, message)
                         else
                             types.Response.Hover{ .id = parsed.id };
@@ -298,7 +336,7 @@ pub fn Lsp(comptime StateType: type) type {
                         const params = parsed.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
 
-                        const response = if (callback(arena.allocator(), context, params.range)) |results|
+                        const response = if (callback(.{ .arena = arena.allocator(), .context = context, .range = params.range })) |results|
                             types.Response.CodeAction{ .id = parsed.id, .result = results }
                         else
                             types.Response.CodeAction{ .id = parsed.id };
@@ -331,7 +369,7 @@ pub fn Lsp(comptime StateType: type) type {
                         const params = parsed.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
 
-                        const response = if (callback(arena.allocator(), context, params.position)) |locations|
+                        const response = if (callback(.{ .arena = arena.allocator(), .context = context, .position = params.position })) |locations|
                             types.Response.MultiLocationResponse.init(parsed.id, locations)
                         else
                             types.Response.MultiLocationResponse{ .id = parsed.id };
@@ -350,7 +388,7 @@ pub fn Lsp(comptime StateType: type) type {
                         const parsed = try std.json.parseFromSliceLeaky(types.Request.Completion, arena.allocator(), msg.content, .{ .ignore_unknown_fields = true });
                         const params = parsed.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        const response = if (callback(arena.allocator(), context, params.position)) |items|
+                        const response = if (callback(.{ .arena = arena.allocator(), .context = context, .position = params.position })) |items|
                             types.Response.Completion{ .id = parsed.id, .result = items }
                         else
                             types.Response.Completion{ .id = parsed.id };
@@ -362,7 +400,7 @@ pub fn Lsp(comptime StateType: type) type {
                         const parsed = try std.json.parseFromSliceLeaky(types.Request.Formatting, arena.allocator(), msg.content, .{ .ignore_unknown_fields = true });
                         const params = parsed.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        const response = if (callback(arena.allocator(), context, params.options)) |items|
+                        const response = if (callback(.{ .arena = arena.allocator(), .context = context, .options = params.options })) |items|
                             types.Response.Formatting{ .id = parsed.id, .result = items }
                         else
                             types.Response.Formatting{ .id = parsed.id };
@@ -374,7 +412,7 @@ pub fn Lsp(comptime StateType: type) type {
                         const parsed = try std.json.parseFromSliceLeaky(types.Request.RangeFormatting, arena.allocator(), msg.content, .{ .ignore_unknown_fields = true });
                         const params = parsed.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        const response = if (callback(arena.allocator(), context, params.range, params.options)) |items|
+                        const response = if (callback(.{ .arena = arena.allocator(), .context = context, .range = params.range, .options = params.options })) |items|
                             types.Response.Formatting{ .id = parsed.id, .result = items }
                         else
                             types.Response.Formatting{ .id = parsed.id };
@@ -401,7 +439,7 @@ pub fn Lsp(comptime StateType: type) type {
             const parsed = try std.json.parseFromSliceLeaky(types.Request.PositionRequest, arena.allocator(), msg.content, .{ .ignore_unknown_fields = true });
             const params = parsed.params;
             const context = self.contexts.getPtr(params.textDocument.uri).?;
-            const response = if (callback(arena.allocator(), context, params.position)) |location|
+            const response = if (callback(.{ .arena = arena.allocator(), .context = context, .position = params.position })) |location|
                 types.Response.LocationResponse.init(parsed.id, location)
             else
                 types.Response.LocationResponse{ .id = parsed.id };
