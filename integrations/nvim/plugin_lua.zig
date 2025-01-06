@@ -19,23 +19,32 @@ pub fn generate(allocator: std.mem.Allocator, info: ServerInfo) !void {
         .languages = langs.items,
     });
     defer allocator.free(content);
-    const filename = "editors/nvim/plugin.lua";
+    const filename = try std.fmt.allocPrint(allocator, "lua/{s}/init.lua", .{info.name});
+    defer allocator.free(filename);
     var file = try std.fs.cwd().createFile(filename, .{});
     defer file.close();
     try file.writeAll(content);
 }
 
 const plugin_lua =
-    \\local start_ls = function()
-    \\    local client = vim.lsp.start_client {{ name = "{[display]s}", cmd = {{ "{[name]s}" }}, }}
-    \\
-    \\    if not client then
-    \\        vim.notify("Failed to start {[display]s}")
-    \\    else
-    \\        vim.api.nvim_create_autocmd("FileType",
-    \\            {{ pattern = {{{[languages]s}}}, callback = function() vim.lsp.buf_attach_client(0, client) end }}
-    \\        )
-    \\    end
+    \\local M = {{}}
+    \\M.setup = function()
+    \\    local autocmd = vim.api.nvim_create_autocmd
+    \\    autocmd("FileType", {{
+    \\        pattern = {{ {[languages]s}}},
+    \\        callback = function()
+    \\            local client = vim.lsp.start({{
+    \\                name = '{[display]s}',
+    \\                cmd = {{ '{[name]s}' }},
+    \\            }})
+    \\            if not client then
+    \\                vim.notify("Failed to start {[display]s}")
+    \\            else
+    \\                vim.lsp.buf_attach_client(0, client)
+    \\            end
+    \\        end
+    \\    }})
     \\end
-    \\start_ls()
+    \\return M
+    \\
 ;
