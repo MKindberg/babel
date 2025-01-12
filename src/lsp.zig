@@ -4,6 +4,7 @@ const builtin = @import("builtin");
 pub const types = @import("types.zig");
 pub const logger = @import("logger.zig");
 pub const log = logger.log;
+pub const fileLog = logger.fileLog;
 pub const Document = @import("document.zig").Document;
 const rpc = @import("rpc.zig");
 const Reader = @import("reader.zig").Reader;

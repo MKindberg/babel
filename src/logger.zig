@@ -55,3 +55,40 @@ pub fn traceVerbose(comptime format: []const u8, args: anytype, comptime verbose
         .verbose = verbose,
     } }) catch return;
 }
+
+pub fn fileLog(filename: []const u8) fn (
+    comptime level: std.log.Level,
+    comptime scope: @TypeOf(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    return struct {
+        pub fn log(
+            comptime level: std.log.Level,
+            comptime scope: @TypeOf(.EnumLiteral),
+            comptime format: []const u8,
+            args: anytype,
+        ) void {
+            _ = scope;
+            const f = struct {
+                var file: ?std.fs.File = null;
+            };
+            if (f.file == null) {
+                f.file = std.fs.cwd().createFile(filename, .{}) catch |e| std.debug.panic("Failed to open " ++ filename ++ " for logging {}", .{e});
+            }
+
+            const message_type = switch (level) {
+                .err => "[Error]",
+                .warn => "[Warning]",
+                .info => "[Info]",
+                .debug => "[Debug]",
+            };
+
+            var message_buf: [1024]u8 = undefined;
+
+            const message = std.fmt.bufPrint(&message_buf, message_type ++ " " ++ format ++ "\n", args) catch return;
+
+            _ = f.file.?.write(message) catch @panic("Failed write logs to " ++ filename);
+        }
+    }.log;
+}
