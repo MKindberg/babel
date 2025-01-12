@@ -134,70 +134,70 @@ pub fn Lsp(comptime StateType: type) type {
 
         pub fn registerDocOpenCallback(self: *Self, callback: *const OpenDocumentCallback) void {
             self.callback_doc_open = callback;
-            logger.trace("Registered open doc callback", .{});
+            std.log.debug("Registered open doc callback", .{});
         }
         pub fn registerDocChangeCallback(self: *Self, callback: *const ChangeDocumentCallback) void {
             self.callback_doc_change = callback;
-            logger.trace("Registered change doc callback", .{});
+            std.log.debug("Registered change doc callback", .{});
         }
         pub fn registerDocSaveCallback(self: *Self, callback: *const SaveDocumentCallback) void {
             self.callback_doc_save = callback;
             self.server_data.capabilities.textDocumentSync.save = true;
-            logger.trace("Registered save doc callback", .{});
+            std.log.debug("Registered save doc callback", .{});
         }
         pub fn registerDocCloseCallback(self: *Self, callback: *const CloseDocumentCallback) void {
             self.callback_doc_close = callback;
-            logger.trace("Registered close doc callback", .{});
+            std.log.debug("Registered close doc callback", .{});
         }
         pub fn registerHoverCallback(self: *Self, callback: *const HoverCallback) void {
             self.callback_hover = callback;
             self.server_data.capabilities.hoverProvider = true;
-            logger.trace("Registered hover callback", .{});
+            std.log.debug("Registered hover callback", .{});
         }
         pub fn registerCodeActionCallback(self: *Self, callback: *const CodeActionCallback) void {
             self.callback_codeAction = callback;
             self.server_data.capabilities.codeActionProvider = true;
-            logger.trace("Registered code action callback", .{});
+            std.log.debug("Registered code action callback", .{});
         }
         pub fn registerGoToDefinitionCallback(self: *Self, callback: *const GoToDefinitionCallback) void {
             self.callback_goto_definition = callback;
             self.server_data.capabilities.definitionProvider = true;
-            logger.trace("Registered go to definition callback", .{});
+            std.log.debug("Registered go to definition callback", .{});
         }
         pub fn registerGoToDeclarationCallback(self: *Self, callback: *const GoToDeclarationCallback) void {
             self.callback_goto_declaration = callback;
             self.server_data.capabilities.declarationProvider = true;
-            logger.trace("Registered go to declaration callback", .{});
+            std.log.debug("Registered go to declaration callback", .{});
         }
         pub fn registerGoToTypeDefinitionCallback(self: *Self, callback: *const GoToTypeDefinitionCallback) void {
             self.callback_goto_type_definition = callback;
             self.server_data.capabilities.typeDefinitionProvider = true;
-            logger.trace("Registered go to type definition callback", .{});
+            std.log.debug("Registered go to type definition callback", .{});
         }
         pub fn registerGoToImplementationCallback(self: *Self, callback: *const GoToImplementationCallback) void {
             self.callback_goto_implementation = callback;
             self.server_data.capabilities.implementationProvider = true;
-            logger.trace("Registered go to implementation callback", .{});
+            std.log.debug("Registered go to implementation callback", .{});
         }
         pub fn registerFindReferencesCallback(self: *Self, callback: *const FindReferencesCallback) void {
             self.callback_find_references = callback;
             self.server_data.capabilities.referencesProvider = true;
-            logger.trace("Registered find references callback", .{});
+            std.log.debug("Registered find references callback", .{});
         }
         pub fn registerCompletionCallback(self: *Self, callback: *const CompletionCallback) void {
             self.callback_completion = callback;
             self.server_data.capabilities.completionProvider = .{};
-            logger.trace("Registered completion callback", .{});
+            std.log.debug("Registered completion callback", .{});
         }
         pub fn registerFormattingCallback(self: *Self, callback: *const FormattingCallback) void {
             self.callback_formatting = callback;
             self.server_data.capabilities.documentFormattingProvider = true;
-            logger.trace("Registered formatting callback", .{});
+            std.log.debug("Registered formatting callback", .{});
         }
         pub fn registerRangeFormattingCallback(self: *Self, callback: *const RangeFormattingCallback) void {
             self.callback_range_formatting = callback;
             self.server_data.capabilities.documentRangeFormattingProvider = true;
-            logger.trace("Registered range formatting callback", .{});
+            std.log.debug("Registered range formatting callback", .{});
         }
 
         pub fn start(self: *Self) !u8 {
@@ -212,7 +212,7 @@ pub fn Lsp(comptime StateType: type) type {
 
             var run_state = RunState.Run;
             while (run_state == RunState.Run) {
-                logger.trace("Waiting for header", .{});
+                std.log.debug("Waiting for header", .{});
                 _ = try reader.readUntilDelimiterOrEof(header.writer(), "\r\n\r\n");
 
                 const content_len_str = "Content-Length: ";
@@ -248,7 +248,7 @@ pub fn Lsp(comptime StateType: type) type {
         }
 
         fn handleMessage(self: *Self, allocator: std.mem.Allocator, msg: rpc.DecodedMessage) !RunState {
-            logger.trace("Received request: {s}", .{msg.method.toString()});
+            std.log.debug("Received request: {s}", .{msg.method.toString()});
 
             if (!self.server_state.validMessage(msg.method)) {
                 switch (self.server_state) {
@@ -379,7 +379,7 @@ pub fn Lsp(comptime StateType: type) type {
                 },
                 rpc.MethodType.@"$/setTrace" => {
                     const parsed = try std.json.parseFromSliceLeaky(types.Notification.SetTrace, arena.allocator(), msg.content, .{ .ignore_unknown_fields = true });
-                    logger.trace_value = parsed.params.value;
+                    std.log.debug_value = parsed.params.value;
                 },
                 rpc.MethodType.@"$/cancelRequest" => {
                     // No way to cancel a request in a single threaded server
@@ -470,13 +470,13 @@ pub fn Lsp(comptime StateType: type) type {
             const request = try std.json.parseFromSliceLeaky(types.Request.Initialize, arena.allocator(), msg, .{ .ignore_unknown_fields = true });
 
             if (request.params.clientInfo) |client_info| {
-                logger.trace("Connected to {s} {s}", .{ client_info.name, client_info.version });
+                std.log.debug("Connected to {s} {s}", .{ client_info.name, client_info.version });
             } else {
-                logger.trace("Connected to unknown server", .{});
+                std.log.debug("Connected to unknown server", .{});
             }
 
             if (request.params.trace) |trace| {
-                logger.trace_value = trace;
+                std.log.debug_value = trace;
             }
 
             const response_msg = types.Response.Initialize.init(request.id, server_data);

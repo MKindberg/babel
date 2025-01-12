@@ -67,7 +67,7 @@ pub const DecodedMessage = struct {
 pub fn decodeMessage(allocator: std.mem.Allocator, msg: []const u8) !DecodedMessage {
     const parsed = try std.json.parseFromSlice(BaseMessage, allocator, msg, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
-    logger.trace("Decoded {s}", .{parsed.value.method});
+    std.log.debug("Decoded {s}", .{parsed.value.method});
     const method_type = try MethodType.fromString(parsed.value.method);
     return .{ .method = method_type, .content = msg };
 }
