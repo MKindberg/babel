@@ -5,7 +5,7 @@ const Lsp = lsp.Lsp(std.fs.File);
 
 const builtin = @import("builtin");
 
-pub const std_options = .{
+pub const std_options = std.Options{
     .log_level = .debug,
     .logFn = lsp.log,
 };

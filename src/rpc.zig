@@ -44,7 +44,7 @@ pub const MethodType = enum {
         return @tagName(self);
     }
     pub fn fromString(s: []const u8) !MethodType {
-        inline for (@typeInfo(MethodType).Enum.fields) |field| {
+        inline for (@typeInfo(MethodType).@"enum".fields) |field| {
             if (std.mem.eql(u8, s, field.name)) {
                 return @enumFromInt(field.value);
             }

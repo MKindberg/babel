@@ -1,7 +1,7 @@
 .{
-    .name = "babel",
+    .name = .babel,
 
-    .version = "0.8.3",
+    .version = "0.10.0",
 
     .paths = .{
         "build.zig",
@@ -9,4 +9,5 @@
         "src",
         "integrations",
     },
+    .fingerprint = 0xb197ee89e74388cd
 }

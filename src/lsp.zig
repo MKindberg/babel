@@ -379,7 +379,7 @@ pub fn Lsp(comptime StateType: type) type {
                 },
                 rpc.MethodType.@"$/setTrace" => {
                     const parsed = try std.json.parseFromSliceLeaky(types.Notification.SetTrace, arena.allocator(), msg.content, .{ .ignore_unknown_fields = true });
-                    std.log.debug_value = parsed.params.value;
+                    logger.trace_value = parsed.params.value;
                 },
                 rpc.MethodType.@"$/cancelRequest" => {
                     // No way to cancel a request in a single threaded server
@@ -476,7 +476,7 @@ pub fn Lsp(comptime StateType: type) type {
             }
 
             if (request.params.trace) |trace| {
-                std.log.debug_value = trace;
+                logger.trace_value = trace;
             }
 
             const response_msg = types.Response.Initialize.init(request.id, server_data);
