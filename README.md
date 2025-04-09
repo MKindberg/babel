@@ -14,7 +14,7 @@ const builtin = @import("builtin");
 
 // Set the global log function to lsp.log in order to use the lsp protocol
 // for logging
-pub const std_options = .{ .log_level = if (builtin.mode == .Debug) .debug else .info, .logFn = lsp.log };
+pub const std_options = std.Options{ .log_level = if (builtin.mode == .Debug) .debug else .info, .logFn = lsp.log };
 
 // File specific state
 const State = struct {
@@ -49,36 +49,37 @@ pub fn main() !u8 {
     return res;
 }
 
-// All callbacks takes at least two parameters, an arena allocator that will
-// be freed after the callback has finished (and the reply has been sent) and
-// a context struct containing the user provided state and the document.
-fn handleOpenDoc(arena: std.mem.Allocator, context: *Lsp.Context) void {
-    _ = arena;
-    std.log.info("Opened {s}", .{context.document.uri});
+// All callbacks take one parameter which is a struct containing an arena
+// allocator that's freed when the callback returns, the current document
+// and state, and any additional data that might be useful.
+// The return values are just aliases for regular types and it doesn't matter
+// if the alias or real type is used.
+fn handleOpenDoc(p: Lsp.OpenDocumentParameters) Lsp.CloseDocumentReturn {
+    std.log.info("Opened {s}", .{p.context.document.uri});
     // The file local state should be initialized when a document is opened.
-    context.state = State.init();
+    p.context.state = State.init();
 }
 
 // Most resources related to the document will be freed automatically, but the
 // user provided state needs to be handled manually.
-fn handleCloseDoc(_: std.mem.Allocator, context: *Lsp.Context) void {
+fn handleCloseDoc(p: Lsp.CloseDocumentParameters) Lsp.CloseDocumentReturn {
     // Deinitialize the state when the file is closed.
-    context.state.deinit();
+    p.context.state.deinit();
 }
 
-// Most callbacks take additional arguments that might be useful, like the
-// changes that triggered a change notification.
-fn handleChangeDoc(_: std.mem.Allocator, _: *Lsp.Context, changes: []lsp.types.ChangeEvent) void {
-    for (changes) |change| {
+// An example of additional data that can be included in the parameters struct
+// is the changes that triggered a changeDocument event.
+fn handleChangeDoc(p: Lsp.ChangeDocumentParameters) void {
+    for (p.changes) |change| {
         std.log.info("New text: {s}", .{change.text});
     }
 }
 
 // Callbacks handling requests will have a non-void return value that will
 // be sent back to the client after the callback returns.
-fn handleHover(_: std.mem.Allocator, context: *Lsp.Context, position: lsp.types.Position) ?[]const u8 {
+fn handleHover(p: Lsp.HoverParameters) ?[]const u8 {
     // A document provides some helper function that can be useful.
-    std.log.info("Hovering the word {s} at {d}:{d}", .{ context.document.getWord(position, "\n .,"), position.line, position.character });
+    std.log.info("Hovering the word {s} at {d}:{d}", .{ p.context.document.getWord(p.position, "\n .,"), p.position.line, p.position.character });
 }
 ```
 
