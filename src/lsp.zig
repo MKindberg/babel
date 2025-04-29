@@ -9,9 +9,12 @@ pub const Document = @import("document.zig").Document;
 const rpc = @import("rpc.zig");
 const Reader = @import("reader.zig").Reader;
 
-pub fn Lsp(comptime StateType: type) type {
-    return struct {
+pub const LspSettings = struct {
+    state_type: type,
+};
 
+pub fn Lsp(comptime settings: LspSettings) type {
+    return struct {
         pub const OpenDocumentParameters = struct { arena: std.mem.Allocator, context: *Context };
         pub const OpenDocumentReturn = void;
         const OpenDocumentCallback = fn (_: OpenDocumentParameters) OpenDocumentReturn;
@@ -108,9 +111,9 @@ pub fn Lsp(comptime StateType: type) type {
         };
 
         pub const Context = struct {
-            server: *Lsp(StateType),
+            server: *Lsp(settings),
             document: Document,
-            state: ?StateType,
+            state: ?settings.state_type,
         };
 
         const RunState = enum {
