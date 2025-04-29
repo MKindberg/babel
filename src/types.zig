@@ -393,9 +393,21 @@ pub const ChangeEvent = struct {
 
 pub const Diagnostic = struct {
     range: Range,
-    severity: i32,
+    severity: DiagnosticSeverity,
     source: ?[]const u8,
     message: []const u8,
+};
+
+pub const DiagnosticSeverity = enum(i32) {
+    Error = 1,
+    Warning = 2,
+    Information = 3,
+    Hint = 4,
+
+    const Self = @This();
+    pub fn jsonStringify(self: Self, out: anytype) !void {
+        return out.print("{}", .{@intFromEnum(self)});
+    }
 };
 
 pub const ErrorData = struct {
