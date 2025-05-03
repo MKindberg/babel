@@ -29,6 +29,15 @@ pub const Document = struct {
         self.allocator.free(self.data);
     }
 
+    pub fn updateFull(self: *Document, text: []const u8) !void {
+        const new_len = text.len;
+        if (new_len > self.data.len) {
+            self.data = try self.allocator.realloc(self.data, new_len + new_len / 3);
+        }
+        std.mem.copyForwards(u8, self.data, text);
+        @memset(self.data[new_len..], 0);
+        self.text = self.data[0..new_len];
+    }
     pub fn update(self: *Document, text: []const u8, range: types.Range) !void {
         const range_start = posToIdx(self.text, range.start) orelse self.text.len;
         const range_end = posToIdx(self.text, range.end) orelse self.text.len;
@@ -48,6 +57,7 @@ pub const Document = struct {
         } else {
             std.mem.copyForwards(u8, self.data[range_start..range_end], text);
         }
+        @memset(self.data[new_len..], 0);
 
         self.text = self.data[0..new_len];
     }

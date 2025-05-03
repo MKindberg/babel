@@ -1,7 +1,10 @@
 const std = @import("std");
 const lsp = @import("lsp");
 
-const Lsp = lsp.Lsp(std.fs.File);
+const Lsp = lsp.Lsp(.{
+    .state_type = std.fs.File,
+    .documentSync = .None,
+});
 
 const builtin = @import("builtin");
 
@@ -14,17 +17,15 @@ pub fn main() !u8 {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    const server_data = lsp.types.ServerData{
-        .serverInfo = .{
-            .name = "tester",
-            .version = "0.1.0",
-        },
+    const server_info = lsp.types.ServerInfo{
+        .name = "tester",
+        .version = "0.1.0",
     };
 
     var file = try std.fs.cwd().createFile("output.txt", .{ .truncate = true });
     defer file.close();
 
-    var server = Lsp.init(allocator, server_data);
+    var server = Lsp.init(allocator, server_info);
     defer server.deinit();
 
     server.registerDocOpenCallback(handleOpenDoc);

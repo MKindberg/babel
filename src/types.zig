@@ -356,10 +356,6 @@ pub const ServerData = struct {
         documentRangeFormattingProvider: bool = false,
         completionProvider: ?struct {} = .{},
     };
-    const ServerInfo = struct {
-        name: []const u8,
-        version: ?[]const u8 = null,
-    };
 };
 
 pub const Range = struct {
@@ -387,7 +383,7 @@ pub const TextEdit = struct {
 };
 
 pub const ChangeEvent = struct {
-    range: Range,
+    range: ?Range,
     text: []const u8,
 };
 
@@ -640,4 +636,9 @@ pub const FormattingOptions = struct {
     trimTrailingWhitespace: ?bool = null,
     insertFinalNewline: ?bool = null,
     trimFinalNewlines: ?bool = null,
+};
+
+pub const ServerInfo = struct {
+    name: []const u8,
+    version: ?[]const u8 = null,
 };
