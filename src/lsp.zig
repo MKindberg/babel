@@ -11,16 +11,15 @@ const Reader = @import("reader.zig").Reader;
 
 pub const LspSettings = struct {
     state_type: ?type = null,
-    documentSync: types.TextDocumentSyncKind = .Incremental,
+    document_sync: types.TextDocumentSyncKind = .Incremental,
+    full_text_on_save: bool = false,
 };
 
 fn CreateContext(comptime settings: LspSettings) type {
     var fields: []const std.builtin.Type.StructField = &.{
         .{ .name = "server", .type = *Lsp(settings), .default_value_ptr = null, .is_comptime = false, .alignment = @alignOf(Lsp(settings)) },
+        .{ .name = "document", .type = Document, .default_value_ptr = null, .is_comptime = false, .alignment = @alignOf(Document) },
     };
-    if (settings.documentSync != .None) {
-        fields = fields ++ .{std.builtin.Type.StructField{ .name = "document", .type = Document, .default_value_ptr = null, .is_comptime = false, .alignment = @alignOf(Document) }};
-    }
     if (settings.state_type) |t| {
         fields = fields ++ .{std.builtin.Type.StructField{ .name = "state", .type = ?t, .default_value_ptr = &@as(?t, null), .is_comptime = false, .alignment = @alignOf(?t) }};
     }
@@ -145,7 +144,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 .server_data = .{
                     .serverInfo = server_info,
                     .capabilities = .{ .textDocumentSync = .{
-                        .change = settings.documentSync,
+                        .change = settings.document_sync,
                     } },
                 },
                 .contexts = std.StringHashMap(Context).init(allocator),
@@ -155,7 +154,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
         pub fn deinit(self: *Self) void {
             var it = self.contexts.iterator();
             while (it.next()) |i| {
-                if (@hasField(Context, "document")) i.value_ptr.document.deinit();
+                i.value_ptr.document.deinit();
             }
             self.contexts.deinit();
         }
@@ -170,7 +169,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
         }
         pub fn registerDocSaveCallback(self: *Self, callback: *const SaveDocumentCallback) void {
             self.callback_doc_save = callback;
-            self.server_data.capabilities.textDocumentSync.save = true;
+            self.server_data.capabilities.textDocumentSync.save = .{ .includeText = settings.full_text_on_save };
             std.log.debug("Registered save doc callback", .{});
         }
         pub fn registerDocCloseCallback(self: *Self, callback: *const CloseDocumentCallback) void {
@@ -310,8 +309,6 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     }
                 },
                 rpc.MethodType.@"textDocument/didChange" => |notification| {
-                    if (settings.documentSync == .None) return RunState.Run;
-
                     const params = notification.params;
                     for (params.contentChanges) |change| {
                         try updateDocument(self, params.textDocument.uri, change.text, change.range);
@@ -326,6 +323,9 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     const params = notification.params;
                     if (self.callback_doc_save) |callback| {
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
+                        if (notification.params.text) |text| {
+                            try context.document.updateFull(text);
+                        }
                         callback(.{ .arena = allocator, .context = context });
                     }
                 },
@@ -487,19 +487,14 @@ pub fn Lsp(comptime settings: LspSettings) type {
         }
 
         fn openDocument(self: *Self, name: []const u8, language: []const u8, content: []const u8) !void {
-            const context = c: {
-                if (@hasField(Context, "document")) {
-                    break :c Context{ .document = try Document.init(self.allocator, name, language, content), .server = self };
-                } else {
-                    break :c Context{ .server = self };
-                }
-            };
+            const context =
+                Context{ .document = try Document.init(self.allocator, name, language, content), .server = self };
             try self.contexts.put(name, context);
         }
 
         fn closeDocument(self: *Self, name: []const u8) void {
             const entry = self.contexts.fetchRemove(name);
-            if (@hasField(Context, "document")) entry.?.value.document.deinit();
+            entry.?.value.document.deinit();
         }
 
         fn updateDocument(self: *Self, name: []const u8, text: []const u8, range: ?types.Range) !void {

@@ -259,6 +259,7 @@ pub const Notification = struct {
         params: Params,
         pub const Params = struct {
             textDocument: TextDocumentIdentifier,
+            text: ?[]const u8 = null,
         };
     };
 
@@ -486,7 +487,11 @@ pub const TraceValue = enum {
 pub const TextDocumentSyncOptions = struct {
     openClose: bool = true,
     change: TextDocumentSyncKind = .Incremental,
-    save: bool = false,
+    save: SaveOptions = .{},
+
+    const SaveOptions = struct {
+        includeText: ?bool = null,
+    };
 };
 
 pub const CompletionList = struct {

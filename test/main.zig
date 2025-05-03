@@ -3,7 +3,6 @@ const lsp = @import("lsp");
 
 const Lsp = lsp.Lsp(.{
     .state_type = std.fs.File,
-    .documentSync = .None,
 });
 
 const builtin = @import("builtin");
