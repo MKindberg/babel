@@ -523,7 +523,7 @@ fn sendInitialize(server: *Lsp(.{})) !void {
     var msg = std.ArrayList(u8).init(std.testing.allocator);
     defer msg.deinit();
 
-    const init_request = types.Request.Initialize{ .id = 0, .params = .{} };
+    const init_request = types.Request.Initialize{ .id = @enumFromInt(0), .params = .{} };
     try std.json.stringify(init_request, .{}, msg.writer());
     const decoded = try rpc.decodeMessage(std.testing.allocator, msg.items);
 

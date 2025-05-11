@@ -1,14 +1,16 @@
 const std = @import("std");
 
+const ID = enum(i32) { _ };
+
 pub const Request = struct {
     pub const Request = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         method: []u8,
     };
     pub const Initialize = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         method: []const u8 = "initialize",
         params: Params,
 
@@ -26,14 +28,14 @@ pub const Request = struct {
     // Used by hover, goto definition, etc.
     pub const PositionRequest = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         method: []u8,
         params: PositionParams,
     };
 
     pub const CodeAction = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         method: []const u8 = "textDocument/codeAction",
         params: Params,
 
@@ -46,13 +48,13 @@ pub const Request = struct {
 
     pub const Shutdown = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         method: []const u8 = "shutdown",
     };
 
     pub const Completion = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         method: []const u8 = "textDocument/completion",
         params: Params,
 
@@ -75,7 +77,7 @@ pub const Request = struct {
 
     pub const Formatting = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         method: []const u8 = "textDocument/formatting",
         params: Params,
 
@@ -87,7 +89,7 @@ pub const Request = struct {
 
     pub const RangeFormatting = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         method: []const u8 = "textDocument/rangeFormatting",
         params: Params,
 
@@ -102,12 +104,12 @@ pub const Request = struct {
 pub const Response = struct {
     pub const Initialize = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         result: ServerData,
 
         const Self = @This();
 
-        pub fn init(id: i32, server_data: ServerData) Self {
+        pub fn init(id: ID, server_data: ServerData) Self {
             return Self{
                 .jsonrpc = "2.0",
                 .id = id,
@@ -118,7 +120,7 @@ pub const Response = struct {
 
     pub const Hover = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         result: ?Result = null,
 
         const Result = struct {
@@ -126,7 +128,7 @@ pub const Response = struct {
         };
 
         const Self = @This();
-        pub fn init(id: i32, contents: []const u8) Self {
+        pub fn init(id: ID, contents: []const u8) Self {
             return Self{
                 .id = id,
                 .result = .{
@@ -138,7 +140,7 @@ pub const Response = struct {
 
     pub const CodeAction = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         result: ?[]const Result = null,
 
         pub const Result = struct {
@@ -154,11 +156,11 @@ pub const Response = struct {
     // Used by goto definition, etc.
     pub const LocationResponse = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         result: ?Location = null,
 
         const Self = @This();
-        pub fn init(id: i32, location: Location) Self {
+        pub fn init(id: ID, location: Location) Self {
             return Self{
                 .id = id,
                 .result = location,
@@ -168,11 +170,11 @@ pub const Response = struct {
 
     pub const MultiLocationResponse = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         result: ?[]const Location = null,
 
         const Self = @This();
-        pub fn init(id: i32, locations: []const Location) Self {
+        pub fn init(id: ID, locations: []const Location) Self {
             return Self{
                 .id = id,
                 .result = locations,
@@ -182,7 +184,7 @@ pub const Response = struct {
 
     pub const Shutdown = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         result: void,
 
         const Self = @This();
@@ -197,11 +199,11 @@ pub const Response = struct {
 
     pub const Error = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         @"error": ErrorData,
 
         const Self = @This();
-        pub fn init(id: i32, code: ErrorCode, message: []const u8) Self {
+        pub fn init(id: ID, code: ErrorCode, message: []const u8) Self {
             return Self{
                 .jsonrpc = "2.0",
                 .id = id,
@@ -215,13 +217,13 @@ pub const Response = struct {
 
     pub const Completion = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         result: ?CompletionList = null,
     };
 
     pub const Formatting = struct {
         jsonrpc: []const u8 = "2.0",
-        id: i32,
+        id: ID,
         result: []const TextEdit = &[_]TextEdit{},
     };
 };
