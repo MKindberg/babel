@@ -489,7 +489,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
         fn openDocument(self: *Self, name: []const u8, language: []const u8, content: []const u8) !void {
             const context =
                 Context{ .document = try Document.init(self.allocator, name, language, content), .server = self };
-            try self.contexts.put(name, context);
+            try self.contexts.put(context.document.uri, context);
         }
 
         fn closeDocument(self: *Self, name: []const u8) void {
