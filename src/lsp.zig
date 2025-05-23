@@ -237,34 +237,46 @@ pub fn Lsp(comptime settings: LspSettings) type {
             var content = std.ArrayList(u8).init(self.allocator);
             defer content.deinit();
 
+            var message_queue = std.ArrayList(struct { decoded: rpc.MethodType, arena: std.heap.ArenaAllocator }).init(self.allocator);
+
+            var fds = [1]std.posix.pollfd{.{
+                .fd = std.posix.STDIN_FILENO,
+                .events = std.posix.POLL.IN,
+                .revents = 0,
+            }};
+
             var run_state = RunState.Run;
             while (run_state == RunState.Run) {
-                std.log.debug("Waiting for header", .{});
-                _ = try reader.readUntilDelimiterOrEof(header.writer(), "\r\n\r\n");
+                while (message_queue.items.len == 0 or try std.posix.poll(&fds, 0) > 0) {
+                    std.log.debug("Waiting for header", .{});
+                    _ = try reader.readUntilDelimiterOrEof(header.writer(), "\r\n\r\n");
 
-                const content_len_str = "Content-Length: ";
-                const content_len = if (std.mem.indexOf(u8, header.items, content_len_str)) |idx|
-                    try std.fmt.parseInt(usize, header.items[idx + content_len_str.len ..], 10)
-                else {
-                    std.log.warn("Content-Length not found in header\n", .{});
-                    break;
-                };
-                header.clearRetainingCapacity();
+                    const content_len_str = "Content-Length: ";
+                    const content_len = if (std.mem.indexOf(u8, header.items, content_len_str)) |idx|
+                        try std.fmt.parseInt(usize, header.items[idx + content_len_str.len ..], 10)
+                    else {
+                        std.log.warn("Content-Length not found in header\n", .{});
+                        break;
+                    };
+                    header.clearRetainingCapacity();
 
-                const bytes_read = try reader.readN(content.writer(), content_len);
-                if (bytes_read != content_len) {
-                    break;
+                    const bytes_read = try reader.readN(content.writer(), content_len);
+                    if (bytes_read != content_len) {
+                        break;
+                    }
+                    defer content.clearRetainingCapacity();
+
+                    var arena = std.heap.ArenaAllocator.init(self.allocator);
+
+                    const decoded = rpc.decodeMessage(arena.allocator(), content.items) catch |e| {
+                        std.log.warn("Failed to decode message: {any}\n", .{e});
+                        continue;
+                    };
+                    try message_queue.append(.{ .decoded = decoded, .arena = arena });
                 }
-                defer content.clearRetainingCapacity();
-
-                var arena = std.heap.ArenaAllocator.init(self.allocator);
-                defer arena.deinit();
-
-                const decoded = rpc.decodeMessage(arena.allocator(), content.items) catch |e| {
-                    std.log.warn("Failed to decode message: {any}\n", .{e});
-                    continue;
-                };
-                run_state = try self.handleMessage(arena.allocator(), decoded);
+                var message = message_queue.orderedRemove(0);
+                defer message.arena.deinit();
+                run_state = try self.handleMessage(message.arena.allocator(), message.decoded);
             }
             return @intFromBool(run_state == RunState.ShutdownOk);
         }
