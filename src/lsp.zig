@@ -15,6 +15,8 @@ pub const LspSettings = struct {
     full_text_on_save: bool = false,
 };
 
+const MessageQueue = std.ArrayList(struct { decoded: rpc.MethodType, arena: std.heap.ArenaAllocator });
+
 fn CreateContext(comptime settings: LspSettings) type {
     var fields: []const std.builtin.Type.StructField = &.{
         .{ .name = "server", .type = *Lsp(settings), .default_value_ptr = null, .is_comptime = false, .alignment = @alignOf(Lsp(settings)) },
@@ -237,7 +239,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
             var content = std.ArrayList(u8).init(self.allocator);
             defer content.deinit();
 
-            var message_queue = std.ArrayList(struct { decoded: rpc.MethodType, arena: std.heap.ArenaAllocator }).init(self.allocator);
+            var message_queue = MessageQueue.init(self.allocator);
 
             var fds = [1]std.posix.pollfd{.{
                 .fd = std.posix.STDIN_FILENO,
@@ -274,11 +276,50 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     };
                     try message_queue.append(.{ .decoded = decoded, .arena = arena });
                 }
+                try filterMessages(self.allocator, &message_queue);
                 var message = message_queue.orderedRemove(0);
                 defer message.arena.deinit();
                 run_state = try self.handleMessage(message.arena.allocator(), message.decoded);
             }
             return @intFromBool(run_state == RunState.ShutdownOk);
+        }
+
+        fn filterMessages(allocator: std.mem.Allocator, message_queue: *MessageQueue) !void {
+            var remove_save = std.ArrayList([]const u8).init(allocator);
+            var remove_format = std.ArrayList([]const u8).init(allocator);
+            defer remove_save.deinit();
+            var i = message_queue.items.len;
+            outer: while (i > 0) {
+                i -= 1;
+                const message = message_queue.items[i].decoded;
+                switch (message) {
+                    rpc.MethodType.@"textDocument/didSave" => |msg| {
+                        const uri = msg.params.textDocument.uri;
+                        for (remove_save.items) |u| {
+                            if (std.mem.eql(u8, uri, u)) {
+                                const m = message_queue.orderedRemove(i);
+                                m.arena.deinit();
+                                continue :outer;
+                            }
+                        } else {
+                            try remove_save.append(uri);
+                        }
+                    },
+                    rpc.MethodType.@"textDocument/formatting" => |msg| {
+                        const uri = msg.params.textDocument.uri;
+                        for (remove_format.items) |u| {
+                            if (std.mem.eql(u8, uri, u)) {
+                                const m = message_queue.orderedRemove(i);
+                                m.arena.deinit();
+                                continue :outer;
+                            }
+                        } else {
+                            try remove_format.append(uri);
+                        }
+                    },
+                    else => {},
+                }
+            }
         }
 
         pub fn writeResponse(self: Self, allocator: std.mem.Allocator, msg: anytype) !void {
