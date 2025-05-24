@@ -287,6 +287,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
         fn filterMessages(allocator: std.mem.Allocator, message_queue: *MessageQueue) !void {
             var remove_save = std.ArrayList([]const u8).init(allocator);
             var remove_format = std.ArrayList([]const u8).init(allocator);
+            var cancel_id = std.ArrayList(types.ID).init(allocator);
             defer remove_save.deinit();
             var i = message_queue.items.len;
             outer: while (i > 0) {
@@ -317,7 +318,36 @@ pub fn Lsp(comptime settings: LspSettings) type {
                             try remove_format.append(uri);
                         }
                     },
+                    rpc.MethodType.@"$/cancelRequest" => |msg| {
+                        try cancel_id.append(msg.params.id);
+                        const m = message_queue.orderedRemove(i);
+                        m.arena.deinit();
+                        continue :outer;
+                    },
                     else => {},
+                }
+                if (cancel_id.items.len > 0) {
+                    switch (message) {
+                        inline else => |msg| {
+                            if (@TypeOf(msg) != void and @hasField(@TypeOf(msg), "id")) {
+                                const msg_id = msg.id;
+                                for (cancel_id.items) |id| {
+                                    if (msg_id == id) {
+                                        var m = message_queue.orderedRemove(i);
+                                        const response = types.Response.Error{
+                                            .id = id,
+                                            .@"error" = .{
+                                                .code = .RequestCancelled,
+                                            },
+                                        };
+                                        try writeResponseInternal(m.arena.allocator(), response);
+                                        m.arena.deinit();
+                                        continue :outer;
+                                    }
+                                }
+                            }
+                        },
+                    }
                 }
             }
         }
@@ -452,7 +482,8 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     logger.trace_value = notification.params.value;
                 },
                 rpc.MethodType.@"$/cancelRequest" => {
-                    // No way to cancel a request in a single threaded server
+                    // Cancel is handled earlier
+                    unreachable;
                 },
                 rpc.MethodType.@"textDocument/completion" => |request| {
                     if (self.callback_completion) |callback| {

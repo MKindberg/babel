@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const ID = enum(i32) { _ };
+pub const ID = enum(i32) { _ };
 
 pub const Request = struct {
     pub const Request = struct {
@@ -64,7 +64,7 @@ pub const Request = struct {
             // context: ?CompletionContext = null,
 
             const CompletionContext = struct {
-                triggerKind: i32,
+                triggerKind: TriggerKind,
                 triggerCharacter: ?[]const u8 = null,
             };
             const TriggerKind = enum(i32) {
@@ -323,10 +323,7 @@ pub const Notification = struct {
         method: []const u8 = "$/cancelRequest",
         params: Params,
         pub const Params = struct {
-            id: union {
-                number: i32,
-                string: []const u8,
-            },
+            id: ID,
         };
     };
 };
@@ -411,7 +408,7 @@ pub const DiagnosticSeverity = enum(i32) {
 
 pub const ErrorData = struct {
     code: ErrorCode,
-    message: []const u8,
+    message: []const u8 = "",
 };
 
 pub const ErrorCode = enum(i32) {

@@ -37,7 +37,7 @@ pub const MethodType = union(enum) {
     @"textDocument/completion": types.Request.Completion,
     @"textDocument/rangeFormatting": types.Request.RangeFormatting,
     @"$/setTrace": types.Notification.SetTrace,
-    @"$/cancelRequest",
+    @"$/cancelRequest": types.Notification.Cancel,
     shutdown: types.Request.Shutdown,
     exit,
 
@@ -47,7 +47,6 @@ pub const MethodType = union(enum) {
     pub fn parseMessage(arena: std.mem.Allocator, s: []const u8, msg: []const u8) !MethodType {
         inline for (@typeInfo(MethodType).@"union".fields) |field| {
             if (std.mem.eql(u8, s, "initialized")) return .initialized;
-            if (std.mem.eql(u8, s, "$/cancelRequest")) return .@"$/cancelRequest";
             if (std.mem.eql(u8, s, "exit")) return .exit;
             if (std.mem.eql(u8, s, field.name) and (field.type) != void) {
                 return @unionInit(MethodType, field.name, try std.json.parseFromSliceLeaky(field.type, arena, msg, .{ .ignore_unknown_fields = true }));
