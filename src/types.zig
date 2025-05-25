@@ -146,7 +146,7 @@ pub const Response = struct {
         pub const Result = struct {
             title: []const u8,
             kind: ?CodeActionKind = null,
-            edit: ?WorkspaceEdit,
+            edit: ?WorkspaceEdit = null,
             const WorkspaceEdit = struct {
                 changes: std.json.ArrayHashMap([]const TextEdit),
             };
@@ -280,7 +280,7 @@ pub const Notification = struct {
         params: Params,
         pub const Params = struct {
             uri: []const u8,
-            diagnostics: []const Diagnostic,
+            diagnostics: []const Diagnostic = &[0]Diagnostic{},
         };
     };
 
@@ -383,14 +383,14 @@ pub const TextEdit = struct {
 };
 
 pub const ChangeEvent = struct {
-    range: ?Range,
+    range: ?Range = null,
     text: []const u8,
 };
 
 pub const Diagnostic = struct {
     range: Range,
     severity: DiagnosticSeverity,
-    source: ?[]const u8,
+    source: ?[]const u8 = null,
     message: []const u8,
 };
 
