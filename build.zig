@@ -4,24 +4,57 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Add modules
+    const build_steps = .{
+        .@"test" = b.step("test", "Run nvim test"),
+    };
+
+    const modules = createModules(b, .{ .target = target, .optimize = optimize });
+
+    buildTest(b, build_steps.@"test", modules.lsp, .{ .target = target, .optimize = optimize });
+}
+
+fn createModules(
+    b: *std.Build,
+    options: struct {
+        target: std.Build.ResolvedTarget,
+        optimize: std.builtin.OptimizeMode,
+    },
+) struct {
+    lsp: *std.Build.Module,
+    plugins: *std.Build.Module,
+} {
     const lsp = b.addModule("lsp", .{
         .root_source_file = b.path("src/lsp.zig"),
-        .target = target,
-        .optimize = optimize,
+        .target = options.target,
+        .optimize = options.optimize,
     });
-    _ = b.addModule("plugins", .{
+    const plugins = b.addModule("plugins", .{
         .root_source_file = b.path("integrations/plugins.zig"),
-        .target = target,
-        .optimize = optimize,
+        .target = options.target,
+        .optimize = options.optimize,
     });
 
+    return .{
+        .lsp = lsp,
+        .plugins = plugins,
+    };
+}
+
+fn buildTest(
+    b: *std.Build,
+    step: *std.Build.Step,
+    lsp: *std.Build.Module,
+    options: struct {
+        target: std.Build.ResolvedTarget,
+        optimize: std.builtin.OptimizeMode,
+    },
+) void {
     // Create test server
     const tester = b.addExecutable(.{
         .name = "test",
         .root_source_file = b.path("test/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .target = options.target,
+        .optimize = options.optimize,
     });
     tester.root_module.addImport("lsp", lsp);
     b.installArtifact(tester);
@@ -32,7 +65,5 @@ pub fn build(b: *std.Build) void {
     const run_test = b.addRunArtifact(nvim_test);
     run_test.step.dependOn(&tester.step);
 
-    const test_step = b.step("test", "Run nvim test");
-    test_step.dependOn(&run_test.step);
-
+    step.dependOn(&run_test.step);
 }
