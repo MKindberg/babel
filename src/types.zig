@@ -336,7 +336,7 @@ const TextDocumentItem = struct {
 };
 
 const TextDocumentIdentifier = struct {
-    uri: []u8,
+    uri: []const u8,
 };
 
 pub const ServerData = struct {
