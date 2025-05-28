@@ -44,15 +44,15 @@ pub const MethodType = union(enum) {
     pub fn toString(self: MethodType) []const u8 {
         return @tagName(self);
     }
-    pub fn parseMessage(arena: std.mem.Allocator, s: []const u8, msg: []const u8) !MethodType {
+    pub fn parseMessage(arena: std.mem.Allocator, method: []const u8, msg: []const u8) !MethodType {
         inline for (@typeInfo(MethodType).@"union".fields) |field| {
-            if (std.mem.eql(u8, s, "initialized")) return .initialized;
-            if (std.mem.eql(u8, s, "exit")) return .exit;
-            if (std.mem.eql(u8, s, field.name) and (field.type) != void) {
-                return @unionInit(MethodType, field.name, try std.json.parseFromSliceLeaky(field.type, arena, msg, .{ .ignore_unknown_fields = true }));
+            if (std.mem.eql(u8, method, "initialized")) return .initialized;
+            if (std.mem.eql(u8, method, "exit")) return .exit;
+            if (std.mem.eql(u8, method, field.name) and (field.type) != void) {
+                return @unionInit(MethodType, field.name, try std.json.parseFromSliceLeaky(field.type, arena, msg, .{ .ignore_unknown_fields = true, .allocate = .alloc_always }));
             }
         }
-        std.log.warn("Unknown method: {s}", .{s});
+        std.log.warn("Unknown method: {s}", .{method});
         return DecodeError.UnknownMethod;
     }
 };
@@ -64,7 +64,6 @@ const DecodeError = error{
 
 pub const DecodedMessage = struct {
     method: MethodType,
-    content: []const u8 = "",
 };
 
 pub fn decodeMessage(allocator: std.mem.Allocator, msg: []const u8) !MethodType {
@@ -87,6 +86,8 @@ test "encodeMessage" {
 
 test "decodeMessage" {
     const msg = "{\"method\":\"initialize\",\"id\":37, \"params\": {}}";
-    const message = try decodeMessage(std.testing.allocator, msg[0..]);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const message = try decodeMessage(arena.allocator(), msg[0..]);
     try std.testing.expectEqual(message.toString(), "initialize");
 }

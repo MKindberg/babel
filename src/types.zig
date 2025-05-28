@@ -6,13 +6,13 @@ pub const Request = struct {
     pub const Request = struct {
         jsonrpc: []const u8 = "2.0",
         id: ID,
-        method: []u8,
+        method: []const u8,
     };
     pub const Initialize = struct {
         jsonrpc: []const u8 = "2.0",
         id: ID,
         method: []const u8 = "initialize",
-        params: Params,
+        params: Params = .{},
 
         const Params = struct {
             clientInfo: ?ClientInfo = null,
@@ -29,7 +29,7 @@ pub const Request = struct {
     pub const PositionRequest = struct {
         jsonrpc: []const u8 = "2.0",
         id: ID,
-        method: []u8,
+        method: []const u8,
         params: PositionParams,
     };
 
@@ -229,6 +229,10 @@ pub const Response = struct {
 };
 
 pub const Notification = struct {
+    pub const Notification = struct {
+        jsonrpc: []const u8 = "2.0",
+        method: []const u8,
+    };
     pub const DidOpenTextDocument = struct {
         jsonrpc: []const u8 = "2.0",
         method: []const u8 = "textDocument/didOpen",
@@ -246,10 +250,10 @@ pub const Notification = struct {
 
         pub const Params = struct {
             textDocument: VersionedTextDocumentIdentifier,
-            contentChanges: []ChangeEvent,
+            contentChanges: []const ChangeEvent,
 
             const VersionedTextDocumentIdentifier = struct {
-                uri: []u8,
+                uri: []const u8,
                 version: i32,
             };
         };
@@ -329,10 +333,10 @@ pub const Notification = struct {
 };
 
 const TextDocumentItem = struct {
-    uri: []u8,
-    languageId: []u8,
+    uri: []const u8,
+    languageId: []const u8,
     version: i32,
-    text: []u8,
+    text: []const u8,
 };
 
 const TextDocumentIdentifier = struct {
