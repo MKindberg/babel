@@ -29,7 +29,7 @@ pub const Document = struct {
         self.allocator.free(self.data);
     }
 
-    pub fn updateFull(self: *Document, text: []const u8) !void {
+    fn updateFull(self: *Document, text: []const u8) !void {
         const new_len = text.len;
         if (new_len > self.data.len) {
             self.data = try self.allocator.realloc(self.data, new_len + new_len / 3);
@@ -38,7 +38,16 @@ pub const Document = struct {
         @memset(self.data[new_len..], 0);
         self.text = self.data[0..new_len];
     }
-    pub fn update(self: *Document, text: []const u8, range: types.Range) !void {
+    pub fn update(self: *Document, changes: []const types.ChangeEvent) !void {
+        for (changes) |change| {
+            if (change.range) |r| {
+                try self.updatePartial(change.text, r);
+            } else {
+                try self.updateFull(change.text);
+            }
+        }
+    }
+    fn updatePartial(self: *Document, text: []const u8, range: types.Range) !void {
         const range_start = posToIdx(self.text, range.start) orelse self.text.len;
         const range_end = posToIdx(self.text, range.end) orelse self.text.len;
         const range_len = range_end - range_start;
@@ -180,7 +189,7 @@ test "addText" {
     var doc = try Document.init(allocator, "", "", "hello world");
     defer doc.deinit();
 
-    try doc.update(",", .{
+    try doc.updatePartial(",", .{
         .start = .{ .line = 0, .character = 5 },
         .end = .{ .line = 0, .character = 5 },
     });
@@ -192,7 +201,7 @@ test "addTextAtEnd" {
     var doc = try Document.init(allocator, "", "", "hello world");
     defer doc.deinit();
 
-    try doc.update("!", .{
+    try doc.updatePartial("!", .{
         .start = .{ .line = 0, .character = 11 },
         .end = .{ .line = 0, .character = 11 },
     });
@@ -204,7 +213,7 @@ test "addTextAtStart" {
     var doc = try Document.init(allocator, "", "", "ello world");
     defer doc.deinit();
 
-    try doc.update("H", .{
+    try doc.updatePartial("H", .{
         .start = .{ .line = 0, .character = 0 },
         .end = .{ .line = 0, .character = 0 },
     });
@@ -215,7 +224,7 @@ test "ChangeText" {
     const allocator = std.testing.allocator;
     var doc = try Document.init(allocator, "", "", "hello world");
     defer doc.deinit();
-    try doc.update("H", .{
+    try doc.updatePartial("H", .{
         .start = .{ .line = 0, .character = 0 },
         .end = .{ .line = 0, .character = 1 },
     });
@@ -226,7 +235,7 @@ test "RemoveText" {
     const allocator = std.testing.allocator;
     var doc = try Document.init(allocator, "", "", "Hello world");
     defer doc.deinit();
-    try doc.update("", .{
+    try doc.updatePartial("", .{
         .start = .{ .line = 0, .character = 5 },
         .end = .{ .line = 0, .character = 6 },
     });
@@ -237,7 +246,7 @@ test "RemoveTextAtStart" {
     const allocator = std.testing.allocator;
     var doc = try Document.init(allocator, "", "", "Hello world");
     defer doc.deinit();
-    try doc.update("", .{
+    try doc.updatePartial("", .{
         .start = .{ .line = 0, .character = 0 },
         .end = .{ .line = 0, .character = 1 },
     });
@@ -248,7 +257,7 @@ test "RemoveTextAtEnd" {
     const allocator = std.testing.allocator;
     var doc = try Document.init(allocator, "", "", "Hello world");
     defer doc.deinit();
-    try doc.update("", .{
+    try doc.updatePartial("", .{
         .start = .{ .line = 0, .character = 10 },
         .end = .{ .line = 0, .character = 11 },
     });

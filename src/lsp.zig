@@ -10,9 +10,14 @@ const rpc = @import("rpc.zig");
 const Reader = @import("reader.zig").Reader;
 
 pub const LspSettings = struct {
+    /// A modifiable optional of this type is passed to each callback in the file context.
     state_type: ?type = null,
+    /// How text changes should be passed from client to server.
     document_sync: types.TextDocumentSyncKind = .Incremental,
+    /// If the full text should be passed on every save, useful when document_sync = .None
     full_text_on_save: bool = false,
+    /// If the document should be updated automatically before the docChange callback is triggered.
+    update_doc_on_change: bool = true,
 };
 
 const MessageQueue = std.ArrayList(struct {
@@ -335,12 +340,12 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 },
                 rpc.MethodType.@"textDocument/didChange" => |notification| {
                     const params = notification.params;
-                    for (params.contentChanges) |change| {
-                        try updateDocument(self, params.textDocument.uri, change.text, change.range);
+                    const context = self.contexts.getPtr(params.textDocument.uri).?;
+                    if (settings.update_doc_on_change) {
+                        try context.document.update(params.contentChanges);
                     }
 
                     if (self.callback_doc_change) |callback| {
-                        const context = self.contexts.getPtr(params.textDocument.uri).?;
                         callback(.{ .arena = allocator, .context = context, .changes = params.contentChanges });
                     }
                 },
@@ -349,7 +354,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     if (self.callback_doc_save) |callback| {
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
                         if (notification.params.text) |text| {
-                            try context.document.updateFull(text);
+                            try context.document.update(&[_]types.ChangeEvent{.{ .text = text, .range = null }});
                         }
                         callback(.{ .arena = allocator, .context = context });
                     }
