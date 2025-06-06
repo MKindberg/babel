@@ -342,7 +342,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     const params = notification.params;
                     const context = self.contexts.getPtr(params.textDocument.uri).?;
                     if (settings.update_doc_on_change) {
-                        try context.document.update(params.contentChanges);
+                        try context.document.updateAll(params.contentChanges);
                     }
 
                     if (self.callback_doc_change) |callback| {
@@ -354,7 +354,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     if (self.callback_doc_save) |callback| {
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
                         if (notification.params.text) |text| {
-                            try context.document.update(&[_]types.ChangeEvent{.{ .text = text, .range = null }});
+                            try context.document.update(.{ .text = text, .range = null });
                         }
                         callback(.{ .arena = allocator, .context = context });
                     }

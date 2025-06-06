@@ -38,18 +38,21 @@ pub const Document = struct {
         @memset(self.data[new_len..], 0);
         self.text = self.data[0..new_len];
     }
-    pub fn update(self: *Document, changes: []const types.ChangeEvent) !void {
+    pub fn update(self: *Document, change: types.ChangeEvent) !void {
+        if (change.range) |r| {
+            try self.updatePartial(change.text, r);
+        } else {
+            try self.updateFull(change.text);
+        }
+    }
+    pub fn updateAll(self: *Document, changes: []const types.ChangeEvent) !void {
         for (changes) |change| {
-            if (change.range) |r| {
-                try self.updatePartial(change.text, r);
-            } else {
-                try self.updateFull(change.text);
-            }
+            try self.update(change);
         }
     }
     fn updatePartial(self: *Document, text: []const u8, range: types.Range) !void {
-        const range_start = posToIdx(self.text, range.start) orelse self.text.len;
-        const range_end = posToIdx(self.text, range.end) orelse self.text.len;
+        const range_start = self.posToIdx(range.start) orelse self.text.len;
+        const range_end = self.posToIdx(range.end) orelse self.text.len;
         const range_len = range_end - range_start;
         const new_len = self.text.len + text.len - range_len;
         const old_len = self.text.len;
