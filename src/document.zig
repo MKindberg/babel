@@ -74,7 +74,10 @@ pub const Document = struct {
         self.text = self.data[0..new_len];
     }
 
-    pub fn idxToPos(text: []const u8, idx: usize) ?types.Position {
+    pub fn idxToPos(self: Document, idx: usize) ?types.Position {
+        return idxToPosText(self.text, idx);
+    }
+    pub fn idxToPosText(text: []const u8, idx: usize) ?types.Position {
         if (idx > text.len) {
             return null;
         }
@@ -86,7 +89,10 @@ pub const Document = struct {
         return .{ .line = line, .character = col };
     }
 
-    pub fn posToIdx(text: []const u8, pos: types.Position) ?usize {
+    pub fn posToIdx(self: Document, pos: types.Position) ?usize {
+        return posToIdxText(self.text, pos);
+    }
+    pub fn posToIdxText(text: []const u8, pos: types.Position) ?usize {
         var offset: usize = 0;
         var i: usize = 0;
         while (i < pos.line) : (i += 1) {
@@ -186,6 +192,7 @@ pub const FindIterator = struct {
         return null;
     }
 };
+
 
 test "addText" {
     const allocator = std.testing.allocator;
