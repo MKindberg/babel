@@ -74,7 +74,10 @@ pub const Document = struct {
         self.text = self.data[0..new_len];
     }
 
-    pub fn idxToPos(text: []const u8, idx: usize) ?types.Position {
+    pub fn idxToPos(self: Document, idx: usize) ?types.Position {
+        return idxToPosText(self.text, idx);
+    }
+    pub fn idxToPosText(text: []const u8, idx: usize) ?types.Position {
         if (idx > text.len) {
             return null;
         }
@@ -86,7 +89,10 @@ pub const Document = struct {
         return .{ .line = line, .character = col };
     }
 
-    pub fn posToIdx(text: []const u8, pos: types.Position) ?usize {
+    pub fn posToIdx(self: Document, pos: types.Position) ?usize {
+        return posToIdxText(self.text, pos);
+    }
+    pub fn posToIdxText(text: []const u8, pos: types.Position) ?usize {
         var offset: usize = 0;
         var i: usize = 0;
         while (i < pos.line) : (i += 1) {
@@ -104,10 +110,10 @@ pub const Document = struct {
 
     /// Find all occurrences of pattern within range.
     pub fn findInRange(self: Document, range: types.Range, pattern: []const u8) FindIterator {
-        var start_idx = posToIdx(self.text, range.start).?;
+        var start_idx = self.posToIdx(range.start).?;
         start_idx -= @min(start_idx, pattern.len);
 
-        var end_idx = posToIdx(self.text, range.end).?;
+        var end_idx = self.posToIdx(range.end).?;
         end_idx = @min(self.text.len, end_idx + pattern.len);
 
         return FindIterator.initWithOffset(self.text, pattern, start_idx, end_idx);
@@ -115,7 +121,7 @@ pub const Document = struct {
 
     /// Get the line containing pos.
     pub fn getLine(self: Document, pos: types.Position) ?[]const u8 {
-        const idx = posToIdx(self.text, pos) orelse return null;
+        const idx = self.posToIdx(pos) orelse return null;
         const start = if (std.mem.lastIndexOfScalar(u8, self.text[0..idx], '\n')) |s| s + 1 else 0;
         const end = idx + (std.mem.indexOfScalar(u8, self.text[idx..], '\n') orelse self.text.len - idx);
 
@@ -124,7 +130,7 @@ pub const Document = struct {
 
     /// Get the word containing pos, a word is anything surrounded by the characters in delimiter.
     pub fn getWord(self: Document, pos: types.Position, delimiter: []const u8) ?[]const u8 {
-        const idx = posToIdx(self.text, pos) orelse return null;
+        const idx = self.posToIdx(pos) orelse return null;
         const start = if (std.mem.lastIndexOfAny(u8, self.text[0..idx], delimiter)) |i| i + 1 else 0;
         const end = std.mem.indexOfAnyPos(u8, self.text, idx, delimiter) orelse self.text.len;
         return self.text[start..end];
@@ -133,8 +139,8 @@ pub const Document = struct {
     /// Get the text in the specified range. Return null if range.start isn't in the document
     /// or if end > start. Returns the rest of the document if end is larger than document.len
     pub fn getRange(self: Document, range: types.Range) ?[]const u8 {
-        const start = Document.posToIdx(self.text, range.start) orelse return null;
-        const end = Document.posToIdx(self.text, range.end) orelse self.text.len;
+        const start = self.posToIdx(range.start) orelse return null;
+        const end = self.posToIdx(range.end) orelse self.text.len;
         if (end < start) {
             return null;
         }
@@ -174,8 +180,8 @@ pub const FindIterator = struct {
         }
         if (std.mem.indexOf(u8, self.text[self.offset..(self.end orelse self.text.len)], self.pattern)) |i| {
             const idx = i + self.offset;
-            const start_pos = Document.idxToPos(self.text, idx).?;
-            const end_pos = Document.idxToPos(self.text, idx + self.pattern.len).?;
+            const start_pos = Document.idxToPosText(self.text, idx).?;
+            const end_pos = Document.idxToPosText(self.text, idx + self.pattern.len).?;
             self.offset = idx + self.pattern.len;
             const res = types.Range{
                 .start = start_pos,
@@ -186,6 +192,7 @@ pub const FindIterator = struct {
         return null;
     }
 };
+
 
 test "addText" {
     const allocator = std.testing.allocator;
