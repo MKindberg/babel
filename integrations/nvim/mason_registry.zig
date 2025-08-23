@@ -15,22 +15,19 @@ pub fn generate(allocator: std.mem.Allocator, info: ServerInfo) !void {
     };
     defer allocator.free(source_id);
 
-    var languages = std.ArrayList(u8).init(allocator);
+    var languages: std.Io.Writer.Allocating = .init(allocator);
     defer languages.deinit();
     for (info.languages) |l| {
-        try languages.writer().print("\"{s}\", ", .{l});
+        try languages.writer.print("\"{s}\", ", .{l});
     }
-    if (languages.items.len > 1) {
-        _ = languages.pop();
-        _ = languages.pop();
-    }
+    const lang_len = if (languages.written().len > 1) languages.written().len - 2 else languages.written().len;
 
     const content = try std.fmt.allocPrint(allocator, mason_registry, .{
         .name = info.name,
         .description = info.description,
         .homepage = info.homepage orelse info.repository orelse "",
         .license = info.license orelse "",
-        .languages = languages.items,
+        .languages = languages.written()[0..lang_len],
         .source_id = source_id,
         .version = version,
     });
@@ -38,7 +35,7 @@ pub fn generate(allocator: std.mem.Allocator, info: ServerInfo) !void {
     var registry_file = try std.fs.cwd().createFile("editors/nvim/registry.json", .{});
     defer registry_file.close();
 
-    try registry_file.writer().print("{s}", .{content});
+    _ = try registry_file.write(content);
 }
 
 fn getVersion(allocator: std.mem.Allocator) !?[]const u8 {

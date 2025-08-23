@@ -49,18 +49,21 @@ fn buildTest(
         optimize: std.builtin.OptimizeMode,
     },
 ) void {
-    // Create test server
-    const tester = b.addExecutable(.{
-        .name = "test",
+    const root_module = b.createModule(.{
         .root_source_file = b.path("test/main.zig"),
         .target = options.target,
         .optimize = options.optimize,
+    });
+    // Create test server
+    const tester = b.addExecutable(.{
+        .name = "test",
+        .root_module = root_module,
     });
     tester.root_module.addImport("lsp", lsp);
     b.installArtifact(tester);
 
     // Run tests
-    const nvim_test = b.addTest(.{ .root_source_file = b.path("test/main.zig") });
+    const nvim_test = b.addTest(.{ .root_module = root_module });
     nvim_test.root_module.addImport("lsp", lsp);
     const run_test = b.addRunArtifact(nvim_test);
     run_test.step.dependOn(&tester.step);

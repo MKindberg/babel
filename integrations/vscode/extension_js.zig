@@ -3,7 +3,7 @@ const std = @import("std");
 const ServerInfo = @import("../plugins.zig").ServerInfo;
 
 pub fn generate(allocator: std.mem.Allocator, info: ServerInfo) !void {
-    var document_selector = std.ArrayList(u8).init(allocator);
+    var document_selector = std.array_list.Managed(u8).init(allocator);
     defer document_selector.deinit();
     for (info.languages) |l| {
         try document_selector.writer().print("      {{ scheme: \"file\", language: \"{s}\" }},\n", .{l});

@@ -20,7 +20,7 @@ pub const LspSettings = struct {
     update_doc_on_change: bool = true,
 };
 
-const MessageQueue = std.ArrayList(struct {
+const MessageQueue = std.array_list.Managed(struct {
     decoded: rpc.MethodType,
     arena: std.heap.ArenaAllocator,
 });
@@ -241,15 +241,15 @@ pub fn Lsp(comptime settings: LspSettings) type {
         }
 
         pub fn start(self: *Self) !u8 {
-            const stdin = if (builtin.is_test and test_input_file != null) try std.fs.cwd().openFile(test_input_file.?, .{}) else std.io.getStdIn();
+            const stdin = if (builtin.is_test and test_input_file != null) try std.fs.cwd().openFile(test_input_file.?, .{}) else std.fs.File.stdin();
             defer if (builtin.is_test and test_input_file != null) stdin.close();
 
-            var reader = Reader.init(self.allocator, stdin.reader());
+            var reader = Reader.init(self.allocator, stdin.reader(&.{}));
             defer reader.deinit();
 
-            var header = std.ArrayList(u8).init(self.allocator);
+            var header = std.array_list.Managed(u8).init(self.allocator);
             defer header.deinit();
-            var body = std.ArrayList(u8).init(self.allocator);
+            var body = std.array_list.Managed(u8).init(self.allocator);
             defer body.deinit();
 
             var message_queue = MessageQueue.init(self.allocator);
@@ -540,11 +540,11 @@ pub fn Lsp(comptime settings: LspSettings) type {
 }
 
 fn filterMessages(allocator: std.mem.Allocator, message_queue: *MessageQueue) !void {
-    var remove_save = std.ArrayList([]const u8).init(allocator);
+    var remove_save = std.array_list.Managed([]const u8).init(allocator);
     defer remove_save.deinit();
-    var remove_format = std.ArrayList([]const u8).init(allocator);
+    var remove_format = std.array_list.Managed([]const u8).init(allocator);
     defer remove_format.deinit();
-    var cancel_id = std.ArrayList(types.ID).init(allocator);
+    var cancel_id = std.array_list.Managed(types.ID).init(allocator);
     defer cancel_id.deinit();
     var i = message_queue.items.len;
     outer: while (i > 0) {
@@ -611,12 +611,11 @@ fn filterMessages(allocator: std.mem.Allocator, message_queue: *MessageQueue) !v
 
 pub fn writeResponseInternal(allocator: std.mem.Allocator, msg: anytype) !void {
     const response = try rpc.encodeMessage(allocator, msg);
-    defer response.deinit();
+    defer allocator.free(response);
 
-    const stdout = if (builtin.is_test and test_output_file != null) try std.fs.cwd().createFile(test_output_file.?, .{ .truncate = false }) else std.io.getStdOut();
+    const stdout = if (builtin.is_test and test_output_file != null) try std.fs.cwd().createFile(test_output_file.?, .{ .truncate = false }) else std.fs.File.stdout();
     defer if (builtin.is_test and test_output_file != null) stdout.close();
-    const writer = stdout.writer();
-    _ = try writer.write(response.items);
+    _ = try stdout.write(response);
 }
 
 // Tests
@@ -624,14 +623,14 @@ pub fn writeResponseInternal(allocator: std.mem.Allocator, msg: anytype) !void {
 fn sendInitialize(server: *Lsp(.{})) !void {
     if (!builtin.is_test) @compileError(@src().fn_name ++ " is only for testing");
 
-    var msg = std.ArrayList(u8).init(std.testing.allocator);
-    defer msg.deinit();
+    const allocator = std.testing.allocator;
 
     const init_request = types.Request.Initialize{ .id = @enumFromInt(0) };
-    try std.json.stringify(init_request, .{}, msg.writer());
+    const msg = try std.json.Stringify.valueAlloc(allocator, init_request, .{});
+    defer allocator.free(msg);
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const decoded = try rpc.decodeMessage(arena.allocator(), msg.items);
+    const decoded = try rpc.decodeMessage(arena.allocator(), msg);
 
     _ = try server.handleMessage(std.testing.allocator, decoded);
     try std.testing.expectEqual(server.server_state, .Initialize);

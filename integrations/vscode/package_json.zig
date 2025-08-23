@@ -3,7 +3,7 @@ const std = @import("std");
 const ServerInfo = @import("../plugins.zig").ServerInfo;
 
 pub fn generate(allocator: std.mem.Allocator, info: ServerInfo) !void {
-    var activation_events = std.ArrayList([]const u8).init(allocator);
+    var activation_events = std.array_list.Managed([]const u8).init(allocator);
     defer activation_events.deinit();
     defer for (activation_events.items) |a| {
         allocator.free(a);
@@ -24,7 +24,9 @@ pub fn generate(allocator: std.mem.Allocator, info: ServerInfo) !void {
     const filename = "editors/vscode/package.json";
     var file = try std.fs.cwd().createFile(filename, .{});
     defer file.close();
-    try std.json.stringify(content, .{ .whitespace = .indent_2 }, file.writer());
+    const data = try std.json.Stringify.valueAlloc(allocator, content, .{ .whitespace = .indent_2 });
+    defer allocator.free(data);
+    _ = try file.write(data);
 }
 
 const PackageJson = struct {

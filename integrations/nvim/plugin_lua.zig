@@ -3,12 +3,12 @@ const std = @import("std");
 const ServerInfo = @import("../plugins.zig").ServerInfo;
 
 pub fn generate(allocator: std.mem.Allocator, info: ServerInfo) !void {
-    var languages = std.ArrayList(u8).init(allocator);
+    var languages = std.array_list.Managed(u8).init(allocator);
     defer languages.deinit();
     for (info.languages) |l| {
         try languages.writer().print("\"{s}\", ", .{l});
     }
-    var langs = std.ArrayList(u8).init(allocator);
+    var langs = std.array_list.Managed(u8).init(allocator);
     defer langs.deinit();
     for (info.languages) |l| {
         try langs.writer().print("\"{s}\", ", .{l});
@@ -20,6 +20,8 @@ pub fn generate(allocator: std.mem.Allocator, info: ServerInfo) !void {
     });
     defer allocator.free(content);
     const filename = try std.fmt.allocPrint(allocator, "lua/{s}/init.lua", .{info.name});
+    std.posix.mkdir("lua", std.fs.Dir.default_mode) catch |e| if (e != error.PathAlreadyExists ) return e;
+    std.posix.mkdir(std.fs.path.dirname(filename).?, std.fs.Dir.default_mode) catch |e| if (e != error.PathAlreadyExists ) return e;
     defer allocator.free(filename);
     var file = try std.fs.cwd().createFile(filename, .{});
     defer file.close();

@@ -2,16 +2,15 @@ const std = @import("std");
 const logger = @import("logger.zig");
 const types = @import("types.zig");
 
-pub fn encodeMessage(allocator: std.mem.Allocator, msg: anytype) !std.ArrayList(u8) {
-    var res = std.ArrayList(u8).init(allocator);
-    errdefer res.deinit();
-    try std.json.stringify(msg, .{}, res.writer());
+pub fn encodeMessage(allocator: std.mem.Allocator, msg: anytype) ![]u8 {
+    const data = try std.json.Stringify.valueAlloc(allocator, msg, .{});
+    defer allocator.free(data);
 
-    const length = res.items.len;
+    const length = data.len;
     var buf: [32]u8 = undefined;
     const content_len = try std.fmt.bufPrint(&buf, "Content-Length: {any}\r\n\r\n", .{length});
 
-    try res.insertSlice(0, content_len);
+    const res = std.mem.join(allocator, "", &[_][]const u8{ content_len, data });
     return res;
 }
 
@@ -74,14 +73,15 @@ pub fn decodeMessage(allocator: std.mem.Allocator, msg: []const u8) !MethodType 
 }
 
 test "encodeMessage" {
+    const allocator = std.testing.allocator;
     const Foo = struct {
         x: u32,
         y: u32,
     };
     const foo = Foo{ .x = 42, .y = 37 };
-    const encoded = try encodeMessage(std.testing.allocator, foo);
-    defer encoded.deinit();
-    try std.testing.expect(std.mem.eql(u8, "Content-Length: 15\r\n\r\n{\"x\":42,\"y\":37}", encoded.items));
+    const encoded = try encodeMessage(allocator, foo);
+    defer allocator.free(encoded);
+    try std.testing.expect(std.mem.eql(u8, "Content-Length: 15\r\n\r\n{\"x\":42,\"y\":37}", encoded));
 }
 
 test "decodeMessage" {
@@ -89,5 +89,5 @@ test "decodeMessage" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const message = try decodeMessage(arena.allocator(), msg[0..]);
-    try std.testing.expectEqual(message.toString(), "initialize");
+    try std.testing.expectEqualStrings(message.toString(), "initialize");
 }

@@ -1,12 +1,12 @@
 const std = @import("std");
 
 pub const Reader = struct {
-    buffer: std.ArrayList(u8),
+    buffer: std.array_list.Managed(u8),
     stream: std.fs.File.Reader,
 
     pub fn init(allocator: std.mem.Allocator, stream: std.fs.File.Reader) Reader {
         return Reader{
-            .buffer = std.ArrayList(u8).init(allocator),
+            .buffer = std.array_list.Managed(u8).init(allocator),
             .stream = stream,
         };
     }
@@ -15,13 +15,21 @@ pub const Reader = struct {
     }
 
     const ReadError = error{EOF};
+    /// Works similar to the corresponding function in the standard library but lets
+    /// the delimiter be a []u8 instead of just a u8.
     pub fn readUntilDelimiterOrEof(self: *Reader, writer: anytype, delimiter: []const u8) !usize {
         defer self.buffer.clearRetainingCapacity();
         var buf: [1]u8 = undefined;
         while (self.buffer.items.len < delimiter.len or
             !std.mem.eql(u8, delimiter, self.buffer.items[self.buffer.items.len - delimiter.len ..]))
         {
-            if (try self.stream.read(&buf) == 0) break;
+            const r = self.stream.read(&buf) catch |e| {
+                switch (e) {
+                    error.EndOfStream => break,
+                    else => return e,
+                }
+            };
+            if (r == 0) break;
             try self.buffer.append(buf[0]);
         } else {
             return try writer.write(self.buffer.items[0 .. self.buffer.items.len - delimiter.len]);
@@ -50,10 +58,10 @@ test "readUntilDelimiterOrEof" {
     _ = try file.write("hello\nworld\n\n");
     try file.seekTo(0);
 
-    var reader = Reader.init(allocator, file.reader());
+    var reader = Reader.init(allocator, file.reader(&.{}));
     defer reader.deinit();
 
-    var res = std.ArrayList(u8).init(allocator);
+    var res = std.array_list.Managed(u8).init(allocator);
     defer res.deinit();
 
     _ = try reader.readUntilDelimiterOrEof(res.writer(), "\n\n");
@@ -73,10 +81,10 @@ test "readN" {
     _ = try file.write("hello\nworld\n\n");
     try file.seekTo(0);
 
-    var reader = Reader.init(allocator, file.reader());
+    var reader = Reader.init(allocator, file.reader(&.{}));
     defer reader.deinit();
 
-    var res = std.ArrayList(u8).init(allocator);
+    var res = std.array_list.Managed(u8).init(allocator);
     defer res.deinit();
 
     _ = try reader.readN(res.writer(), 5);

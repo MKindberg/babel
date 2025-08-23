@@ -7,9 +7,10 @@ const lsp = @import("lsp.zig");
 const Lsp = lsp.Lsp;
 
 fn queueMessage(writer: anytype, message: anytype) !void {
-    const encoded = try rpc.encodeMessage(std.testing.allocator, message);
-    defer encoded.deinit();
-    _ = try writer.write(encoded.items);
+    const allocator = std.testing.allocator;
+    const encoded = try rpc.encodeMessage(allocator, message);
+    defer allocator.free(encoded);
+    _ = try writer.write(encoded);
 }
 
 fn initializeServer(writer: anytype) !void {
@@ -51,16 +52,15 @@ test "init-shutdown" {
     lsp.test_output_file = "test_output";
     defer lsp.test_output_file = null;
     const file = try std.fs.cwd().createFile(lsp.test_input_file.?, .{});
-    const writer = file.writer();
 
-    try initializeServer(writer);
+    try initializeServer(file);
 
     const uri = "test.txt";
-    try openDoc(writer, uri, "Test document");
-    try changeDoc(writer, uri, "Added text");
-    try closeDoc(writer, uri);
+    try openDoc(file, uri, "Test document");
+    try changeDoc(file, uri, "Added text");
+    try closeDoc(file, uri);
 
-    try shutdownServer(writer);
+    try shutdownServer(file);
 
     file.close();
 
