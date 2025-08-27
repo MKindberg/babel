@@ -20,14 +20,14 @@ pub fn generate(allocator: std.mem.Allocator, info: ServerInfo) !void {
     for (info.languages) |l| {
         try languages.writer.print("\"{s}\", ", .{l});
     }
-    const lang_len = if (languages.written().len > 1) languages.written().len - 2 else languages.written().len;
+    if (languages.written().len > 1) languages.writer.undo(2);
 
     const content = try std.fmt.allocPrint(allocator, mason_registry, .{
         .name = info.name,
         .description = info.description,
         .homepage = info.homepage orelse info.repository orelse "",
         .license = info.license orelse "",
-        .languages = languages.written()[0..lang_len],
+        .languages = languages.written(),
         .source_id = source_id,
         .version = version,
     });

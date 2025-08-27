@@ -7,7 +7,7 @@ pub const log = logger.log;
 pub const fileLog = logger.fileLog;
 pub const Document = @import("document.zig").Document;
 const rpc = @import("rpc.zig");
-const Reader = @import("reader.zig").Reader;
+const reader = @import("reader.zig");
 
 pub const LspSettings = struct {
     /// A modifiable optional of this type is passed to each callback in the file context.
@@ -20,7 +20,7 @@ pub const LspSettings = struct {
     update_doc_on_change: bool = true,
 };
 
-const MessageQueue = std.array_list.Managed(struct {
+const MessageQueue = std.ArrayList(struct {
     decoded: rpc.MethodType,
     arena: std.heap.ArenaAllocator,
 });
@@ -244,16 +244,13 @@ pub fn Lsp(comptime settings: LspSettings) type {
             const stdin = if (builtin.is_test and test_input_file != null) try std.fs.cwd().openFile(test_input_file.?, .{}) else std.fs.File.stdin();
             defer if (builtin.is_test and test_input_file != null) stdin.close();
 
-            var reader = Reader.init(self.allocator, stdin.reader(&.{}));
-            defer reader.deinit();
-
-            var header = std.array_list.Managed(u8).init(self.allocator);
+            var header = std.Io.Writer.Allocating.init(self.allocator);
             defer header.deinit();
-            var body = std.array_list.Managed(u8).init(self.allocator);
+            var body = std.Io.Writer.Allocating.init(self.allocator);
             defer body.deinit();
 
-            var message_queue = MessageQueue.init(self.allocator);
-            defer message_queue.deinit();
+            var message_queue = try MessageQueue.initCapacity(self.allocator, 16);
+            defer message_queue.deinit(self.allocator);
 
             var fds = [1]std.posix.pollfd{.{
                 .fd = stdin.handle,
@@ -263,32 +260,35 @@ pub fn Lsp(comptime settings: LspSettings) type {
 
             var run_state = RunState.Run;
             outer: while (run_state == RunState.Run) {
-                while (message_queue.items.len == 0 or try std.posix.poll(&fds, 0) > 0) {
+                while (message_queue.capacity > message_queue.items.len and
+                    (message_queue.items.len == 0 or try std.posix.poll(&fds, 0) > 0))
+                {
                     std.log.debug("Waiting for header", .{});
-                    const read = try reader.readUntilDelimiterOrEof(header.writer(), "\r\n\r\n");
+                    var r = stdin.reader(&.{}).interface;
+                    const read = try reader.readUntilDelimiterOrEof(&r, &header.writer, "\r\n\r\n");
                     if (read == 0) break;
 
                     const content_len_str = "Content-Length: ";
-                    const content_len = if (std.mem.indexOf(u8, header.items, content_len_str)) |idx|
-                        try std.fmt.parseInt(usize, header.items[idx + content_len_str.len ..], 10)
+                    const content_len = if (std.mem.indexOf(u8, header.written(), content_len_str)) |idx|
+                        try std.fmt.parseInt(usize, header.written()[idx + content_len_str.len ..], 10)
                     else {
-                        std.log.warn("Content-Length not found in header\n'{s}'", .{header.items});
+                        std.log.warn("Content-Length not found in header\n'{s}'", .{header.written()});
                         break :outer;
                     };
                     header.clearRetainingCapacity();
 
-                    const bytes_read = try reader.readN(body.writer(), content_len);
+                    const bytes_read = try r.stream(&body.writer, std.Io.Limit.limited(content_len));
                     if (bytes_read != content_len) {
                         break;
                     }
                     var arena = std.heap.ArenaAllocator.init(self.allocator);
                     defer body.clearRetainingCapacity();
 
-                    const decoded = rpc.decodeMessage(arena.allocator(), body.items) catch |e| {
+                    const decoded = rpc.decodeMessage(arena.allocator(), body.written()) catch |e| {
                         std.log.warn("Failed to decode message: {any}\n", .{e});
                         continue;
                     };
-                    try message_queue.append(.{ .decoded = decoded, .arena = arena });
+                    message_queue.appendAssumeCapacity(.{ .decoded = decoded, .arena = arena });
                 }
                 try filterMessages(self.allocator, &message_queue);
                 var message = message_queue.orderedRemove(0);
@@ -540,12 +540,12 @@ pub fn Lsp(comptime settings: LspSettings) type {
 }
 
 fn filterMessages(allocator: std.mem.Allocator, message_queue: *MessageQueue) !void {
-    var remove_save = std.array_list.Managed([]const u8).init(allocator);
-    defer remove_save.deinit();
-    var remove_format = std.array_list.Managed([]const u8).init(allocator);
-    defer remove_format.deinit();
-    var cancel_id = std.array_list.Managed(types.ID).init(allocator);
-    defer cancel_id.deinit();
+    var remove_save: std.ArrayList([]const u8) = .empty;
+    defer remove_save.deinit(allocator);
+    var remove_format: std.ArrayList([]const u8) = .empty;
+    defer remove_format.deinit(allocator);
+    var cancel_id: std.ArrayList(types.ID) = .empty;
+    defer cancel_id.deinit(allocator);
     var i = message_queue.items.len;
     outer: while (i > 0) {
         i -= 1;
@@ -560,7 +560,7 @@ fn filterMessages(allocator: std.mem.Allocator, message_queue: *MessageQueue) !v
                         continue :outer;
                     }
                 } else {
-                    try remove_save.append(uri);
+                    try remove_save.append(allocator, uri);
                 }
             },
             rpc.MethodType.@"textDocument/formatting" => |msg| {
@@ -572,11 +572,11 @@ fn filterMessages(allocator: std.mem.Allocator, message_queue: *MessageQueue) !v
                         continue :outer;
                     }
                 } else {
-                    try remove_format.append(uri);
+                    try remove_format.append(allocator, uri);
                 }
             },
             rpc.MethodType.@"$/cancelRequest" => |msg| {
-                try cancel_id.append(msg.params.id);
+                try cancel_id.append(allocator, msg.params.id);
                 const m = message_queue.orderedRemove(i);
                 m.arena.deinit();
                 continue :outer;
@@ -667,23 +667,23 @@ fn createSave(filename: []const u8) rpc.MethodType {
     return .{ .@"textDocument/didSave" = .{ .params = .{ .textDocument = .{ .uri = filename } } } };
 }
 test "FilterSaves" {
-    var queue = MessageQueue.init(std.testing.allocator);
-    defer queue.deinit();
-    try queue.append(.{
+    var queue = try MessageQueue.initCapacity(std.testing.allocator, 3);
+    defer queue.deinit(std.testing.allocator);
+    queue.appendAssumeCapacity(.{
         .arena = std.heap.ArenaAllocator.init(std.testing.allocator),
         .decoded = createSave("file1"),
     });
     try filterMessages(std.testing.allocator, &queue);
     try std.testing.expectEqual(1, queue.items.len);
 
-    try queue.append(.{
+    queue.appendAssumeCapacity(.{
         .arena = std.heap.ArenaAllocator.init(std.testing.allocator),
         .decoded = createSave("file1"),
     });
     try filterMessages(std.testing.allocator, &queue);
     try std.testing.expectEqual(1, queue.items.len);
 
-    try queue.append(.{
+    queue.appendAssumeCapacity(.{
         .arena = std.heap.ArenaAllocator.init(std.testing.allocator),
         .decoded = createSave("file2"),
     });
@@ -706,27 +706,27 @@ fn createFormatting(filename: []const u8, id: usize) rpc.MethodType {
     };
 }
 test "FilterFormats" {
-    var queue = MessageQueue.init(std.testing.allocator);
-    defer queue.deinit();
-    try queue.append(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file1", 1) });
+    var queue = try MessageQueue.initCapacity(std.testing.allocator, 3);
+    defer queue.deinit(std.testing.allocator);
+    queue.appendAssumeCapacity(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file1", 1) });
     try filterMessages(std.testing.allocator, &queue);
     try std.testing.expectEqual(1, queue.items.len);
 
-    try queue.append(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file1", 2) });
+    queue.appendAssumeCapacity(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file1", 2) });
     try filterMessages(std.testing.allocator, &queue);
     try std.testing.expectEqual(1, queue.items.len);
 
-    try queue.append(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file2", 3) });
+    queue.appendAssumeCapacity(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file2", 3) });
     try filterMessages(std.testing.allocator, &queue);
     try std.testing.expectEqual(2, queue.items.len);
 }
 
 test "FilterCancel" {
-    var queue = MessageQueue.init(std.testing.allocator);
-    defer queue.deinit();
-    try queue.append(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file1", 1) });
-    try queue.append(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file2", 2) });
-    try queue.append(
+    var queue = try MessageQueue.initCapacity(std.testing.allocator, 3);
+    defer queue.deinit(std.testing.allocator);
+    queue.appendAssumeCapacity(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file1", 1) });
+    queue.appendAssumeCapacity(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file2", 2) });
+    queue.appendAssumeCapacity(
         .{
             .arena = std.heap.ArenaAllocator.init(std.testing.allocator),
             .decoded = .{
