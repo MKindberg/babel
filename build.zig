@@ -21,22 +21,15 @@ fn createModules(
     },
 ) struct {
     lsp: *std.Build.Module,
-    plugins: *std.Build.Module,
 } {
     const lsp = b.addModule("lsp", .{
         .root_source_file = b.path("src/lsp.zig"),
         .target = options.target,
         .optimize = options.optimize,
     });
-    const plugins = b.addModule("plugins", .{
-        .root_source_file = b.path("integrations/plugins.zig"),
-        .target = options.target,
-        .optimize = options.optimize,
-    });
 
     return .{
         .lsp = lsp,
-        .plugins = plugins,
     };
 }
 

@@ -2,7 +2,7 @@
 A framework for writing, or at least prototyping, language servers in Zig.
 It allows you to register callbacks that will be called when notifications or
 requests are received. In addition to this it will also keep track of and automatically
-update the documents being edited and lets you generate plugins for nvim and vscode.
+update the documents being edited.
 
 ## Usage
 
@@ -102,47 +102,5 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("lsp", lsp);
 
     b.installArtifact(exe);
-
-    // Create a build target for generating minimal editor plugins
-    const plugin_generator = b.addExecutable(.{
-        .name = "generate_plugins",
-        .root_source_file = b.path("plugin_generator.zig"),
-        .target = b.host,
-    });
-    plugin_generator.root_module.addImport("lsp_plugins", babel.module("plugins"));
-    b.step("gen_plugins", "Generate plugins").dependOn(&b.addRunArtifact(plugin_generator).step);
-}
-```
-
-### Generate plugins
-```zig
-const std = @import("std");
-const lsp_plugins = @import("lsp_plugins");
-
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-
-    // Create a struct with information about the server used in the generated files
-    // A lot of the information is optional depending on what is being generated.
-    const info = lsp_plugins.ServerInfo{
-        .name = "server_name",
-        .description = "Description",
-        .publisher = "mkindberg",
-        .languages = &[_][]const u8{"zig"},
-        .repository = "https://github.com/mkindberg/babel",
-        .source_id = "pkg:github/mkindberg/babel",
-        .version = "0.1.0",
-        .license = "MIT",
-    };
-
-    // The plugins can be generated all at once
-    try lsp_plugins.generate(allocator, info);
-
-    // or separately. The plugins will be placed in a new dir called
-    // editors with subdirectories for each editor.
-    try lsp_plugins.generateVSCode(allocator, info);
-    try lsp_plugins.generateNvim(allocator, info);
-    try lsp_plugins.generateMasonRegistry(allocator, info);
 }
 ```
