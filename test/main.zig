@@ -24,7 +24,12 @@ pub fn main() !u8 {
     var file = try std.fs.cwd().createFile("output.txt", .{ .truncate = true });
     defer file.close();
 
-    var server = Lsp.init(allocator, server_info);
+    var in_buffer: [512]u8 = undefined;
+    var out_buffer: [512]u8 = undefined;
+    var stdin = std.fs.File.stdin().reader(&in_buffer).interface;
+    var stdout = std.fs.File.stdout().writer(&out_buffer).interface;
+
+    var server = Lsp.init(allocator, &stdin, &stdout, server_info);
     defer server.deinit();
 
     server.registerDocOpenCallback(handleOpenDoc);

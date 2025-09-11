@@ -124,6 +124,8 @@ pub fn Lsp(comptime settings: LspSettings) type {
         contexts: std.StringHashMap(Context),
         server_data: types.ServerData,
         allocator: std.mem.Allocator,
+        input_stream: *std.Io.Reader,
+        output_stream: *std.Io.Writer,
 
         server_state: ServerState = .Stopped,
         const ServerState = enum {
@@ -151,9 +153,11 @@ pub fn Lsp(comptime settings: LspSettings) type {
         };
 
         const Self = @This();
-        pub fn init(allocator: std.mem.Allocator, server_info: types.ServerInfo) Self {
+        pub fn init(allocator: std.mem.Allocator, input_stream: *std.Io.Reader, output_stream: *std.Io.Writer, server_info: types.ServerInfo) Self {
             return Self{
                 .allocator = allocator,
+                .input_stream = input_stream,
+                .output_stream = output_stream,
                 .server_data = .{
                     .serverInfo = server_info,
                     .capabilities = .{ .textDocumentSync = .{
@@ -241,9 +245,6 @@ pub fn Lsp(comptime settings: LspSettings) type {
         }
 
         pub fn start(self: *Self) !u8 {
-            const stdin = if (builtin.is_test and test_input_file != null) try std.fs.cwd().openFile(test_input_file.?, .{}) else std.fs.File.stdin();
-            defer if (builtin.is_test and test_input_file != null) stdin.close();
-
             var header = std.Io.Writer.Allocating.init(self.allocator);
             defer header.deinit();
             var body = std.Io.Writer.Allocating.init(self.allocator);
@@ -252,20 +253,13 @@ pub fn Lsp(comptime settings: LspSettings) type {
             var message_queue = try MessageQueue.initCapacity(self.allocator, 16);
             defer message_queue.deinit(self.allocator);
 
-            var fds = [1]std.posix.pollfd{.{
-                .fd = stdin.handle,
-                .events = std.posix.POLL.IN,
-                .revents = 0,
-            }};
-
             var run_state = RunState.Run;
             outer: while (run_state == RunState.Run) {
                 while (message_queue.capacity > message_queue.items.len and
-                    (message_queue.items.len == 0 or try std.posix.poll(&fds, 0) > 0))
+                    (message_queue.items.len == 0 or self.input_stream.peekByte() != error.EndOfStream))
                 {
                     std.log.debug("Waiting for header", .{});
-                    var r = stdin.reader(&.{}).interface;
-                    const read = try reader.readUntilDelimiterOrEof(&r, &header.writer, "\r\n\r\n");
+                    const read = try reader.readUntilDelimiterOrEof(self.input_stream, &header.writer, "\r\n\r\n");
                     if (read == 0) break;
 
                     const content_len_str = "Content-Length: ";
@@ -277,7 +271,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     };
                     header.clearRetainingCapacity();
 
-                    const bytes_read = try r.stream(&body.writer, std.Io.Limit.limited(content_len));
+                    const bytes_read = try self.input_stream.stream(&body.writer, std.Io.Limit.limited(content_len));
                     if (bytes_read != content_len) {
                         break;
                     }
@@ -290,7 +284,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     };
                     message_queue.appendAssumeCapacity(.{ .decoded = decoded, .arena = arena });
                 }
-                try filterMessages(self.allocator, &message_queue);
+                try filterMessages(self.allocator, self.output_stream, &message_queue);
                 var message = message_queue.orderedRemove(0);
                 defer message.arena.deinit();
                 run_state = try self.handleMessage(message.arena.allocator(), message.decoded);
@@ -304,7 +298,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 std.log.err("Cannot send message when server not in running state", .{});
                 return;
             }
-            try writeResponseInternal(allocator, msg);
+            try writeResponseInternal(allocator, self.output_stream, msg);
         }
 
         fn handleMessage(self: *Self, allocator: std.mem.Allocator, msg: rpc.MethodType) !RunState {
@@ -489,19 +483,19 @@ pub fn Lsp(comptime settings: LspSettings) type {
             try self.writeResponse(alloc, response);
         }
 
-        fn handleShutdown(_: Self, arena: std.mem.Allocator, request: types.Request.Shutdown) !void {
+        fn handleShutdown(self: Self, arena: std.mem.Allocator, request: types.Request.Shutdown) !void {
             const response = types.Response.Shutdown.init(request);
-            try writeResponseInternal(arena, response);
+            try writeResponseInternal(arena, self.output_stream, response);
         }
 
-        fn replyInvalidRequest(_: Self, arena: std.mem.Allocator, request: anytype, error_code: types.ErrorCode, error_message: []const u8) !void {
+        fn replyInvalidRequest(self: Self, arena: std.mem.Allocator, request: anytype, error_code: types.ErrorCode, error_message: []const u8) !void {
             if (@hasField(@TypeOf(request), "id")) {
                 const reply = types.Response.Error.init(request.id, error_code, error_message);
-                try writeResponseInternal(arena, reply);
+                try writeResponseInternal(arena, self.output_stream, reply);
             }
         }
 
-        fn handleInitialize(_: Self, arena: std.mem.Allocator, request: types.Request.Initialize, server_data: types.ServerData) !void {
+        fn handleInitialize(self: Self, arena: std.mem.Allocator, request: types.Request.Initialize, server_data: types.ServerData) !void {
             if (request.params.clientInfo) |client_info| {
                 std.log.debug("Connected to {s} {s}", .{ client_info.name, client_info.version });
             } else {
@@ -514,7 +508,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
 
             const response_msg = types.Response.Initialize.init(request.id, server_data);
 
-            try writeResponseInternal(arena, response_msg);
+            try writeResponseInternal(arena, self.output_stream, response_msg);
         }
 
         fn openDocument(self: *Self, name: []const u8, language: []const u8, content: []const u8) !void {
@@ -539,7 +533,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
     };
 }
 
-fn filterMessages(allocator: std.mem.Allocator, message_queue: *MessageQueue) !void {
+fn filterMessages(allocator: std.mem.Allocator, output_stream: *std.Io.Writer, message_queue: *MessageQueue) !void {
     var remove_save: std.ArrayList([]const u8) = .empty;
     defer remove_save.deinit(allocator);
     var remove_format: std.ArrayList([]const u8) = .empty;
@@ -597,7 +591,7 @@ fn filterMessages(allocator: std.mem.Allocator, message_queue: *MessageQueue) !v
                                         .code = .RequestCancelled,
                                     },
                                 };
-                                try writeResponseInternal(m.arena.allocator(), response);
+                                try writeResponseInternal(m.arena.allocator(), output_stream, response);
                                 m.arena.deinit();
                                 continue :outer;
                             }
@@ -609,13 +603,12 @@ fn filterMessages(allocator: std.mem.Allocator, message_queue: *MessageQueue) !v
     }
 }
 
-pub fn writeResponseInternal(allocator: std.mem.Allocator, msg: anytype) !void {
+pub fn writeResponseInternal(allocator: std.mem.Allocator, output_stream: *std.Io.Writer, msg: anytype) !void {
     const response = try rpc.encodeMessage(allocator, msg);
     defer allocator.free(response);
 
-    const stdout = if (builtin.is_test and test_output_file != null) try std.fs.cwd().createFile(test_output_file.?, .{ .truncate = false }) else std.fs.File.stdout();
-    defer if (builtin.is_test and test_output_file != null) stdout.close();
-    _ = try stdout.write(response);
+    _ = try output_stream.write(response);
+    try output_stream.flush();
 }
 
 // Tests
@@ -652,13 +645,23 @@ fn startServer(server: *Lsp(.{})) !void {
 }
 
 test "Initialize" {
-    var server = Lsp(.{}).init(std.testing.allocator, .{ .name = "testing", .version = "1" });
+    var in_buffer: [512]u8 = undefined;
+    var out_buffer: [512]u8 = undefined;
+    var stdin = std.fs.File.stdin().reader(&in_buffer);
+    var stdout = std.fs.File.stdout().writer(&out_buffer);
+
+    var server = Lsp(.{}).init(std.testing.allocator, &stdin.interface, &stdout.interface, .{ .name = "testing", .version = "1" });
     defer server.deinit();
     try sendInitialize(&server);
 }
 
 test "Initialized" {
-    var server = Lsp(.{}).init(std.testing.allocator, .{ .name = "testing", .version = "1" });
+    var in_buffer: [512]u8 = undefined;
+    var out_buffer: [512]u8 = undefined;
+    var stdin = std.fs.File.stdin().reader(&in_buffer);
+    var stdout = std.fs.File.stdout().writer(&out_buffer);
+
+    var server = Lsp(.{}).init(std.testing.allocator, &stdin.interface, &stdout.interface, .{ .name = "testing", .version = "1" });
     defer server.deinit();
     try startServer(&server);
 }
@@ -667,27 +670,30 @@ fn createSave(filename: []const u8) rpc.MethodType {
     return .{ .@"textDocument/didSave" = .{ .params = .{ .textDocument = .{ .uri = filename } } } };
 }
 test "FilterSaves" {
+    var out_buffer: [512]u8 = undefined;
+    var stdout = std.fs.File.stdout().writer(&out_buffer);
+
     var queue = try MessageQueue.initCapacity(std.testing.allocator, 3);
     defer queue.deinit(std.testing.allocator);
     queue.appendAssumeCapacity(.{
         .arena = std.heap.ArenaAllocator.init(std.testing.allocator),
         .decoded = createSave("file1"),
     });
-    try filterMessages(std.testing.allocator, &queue);
+    try filterMessages(std.testing.allocator, &stdout.interface, &queue);
     try std.testing.expectEqual(1, queue.items.len);
 
     queue.appendAssumeCapacity(.{
         .arena = std.heap.ArenaAllocator.init(std.testing.allocator),
         .decoded = createSave("file1"),
     });
-    try filterMessages(std.testing.allocator, &queue);
+    try filterMessages(std.testing.allocator, &stdout.interface, &queue);
     try std.testing.expectEqual(1, queue.items.len);
 
     queue.appendAssumeCapacity(.{
         .arena = std.heap.ArenaAllocator.init(std.testing.allocator),
         .decoded = createSave("file2"),
     });
-    try filterMessages(std.testing.allocator, &queue);
+    try filterMessages(std.testing.allocator, &stdout.interface, &queue);
     try std.testing.expectEqual(2, queue.items.len);
 }
 
@@ -706,22 +712,28 @@ fn createFormatting(filename: []const u8, id: usize) rpc.MethodType {
     };
 }
 test "FilterFormats" {
+    var out_buffer: [512]u8 = undefined;
+    var stdout = std.fs.File.stdout().writer(&out_buffer);
+
     var queue = try MessageQueue.initCapacity(std.testing.allocator, 3);
     defer queue.deinit(std.testing.allocator);
     queue.appendAssumeCapacity(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file1", 1) });
-    try filterMessages(std.testing.allocator, &queue);
+    try filterMessages(std.testing.allocator, &stdout.interface, &queue);
     try std.testing.expectEqual(1, queue.items.len);
 
     queue.appendAssumeCapacity(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file1", 2) });
-    try filterMessages(std.testing.allocator, &queue);
+    try filterMessages(std.testing.allocator, &stdout.interface, &queue);
     try std.testing.expectEqual(1, queue.items.len);
 
     queue.appendAssumeCapacity(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file2", 3) });
-    try filterMessages(std.testing.allocator, &queue);
+    try filterMessages(std.testing.allocator, &stdout.interface, &queue);
     try std.testing.expectEqual(2, queue.items.len);
 }
 
 test "FilterCancel" {
+    var out_buffer: [512]u8 = undefined;
+    var stdout = std.fs.File.stdout().writer(&out_buffer);
+
     var queue = try MessageQueue.initCapacity(std.testing.allocator, 3);
     defer queue.deinit(std.testing.allocator);
     queue.appendAssumeCapacity(.{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator), .decoded = createFormatting("file1", 1) });
@@ -739,6 +751,6 @@ test "FilterCancel" {
         },
     );
 
-    try filterMessages(std.testing.allocator, &queue);
+    try filterMessages(std.testing.allocator, &stdout.interface, &queue);
     try std.testing.expectEqual(1, queue.items.len);
 }
