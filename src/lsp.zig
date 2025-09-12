@@ -271,10 +271,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     };
                     header.clearRetainingCapacity();
 
-                    const bytes_read = try self.input_stream.stream(&body.writer, std.Io.Limit.limited(content_len));
-                    if (bytes_read != content_len) {
-                        break;
-                    }
+                    try self.input_stream.streamExact(&body.writer, content_len);
                     var arena = std.heap.ArenaAllocator.init(self.allocator);
                     defer body.clearRetainingCapacity();
 
