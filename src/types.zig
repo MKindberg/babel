@@ -14,13 +14,422 @@ pub const Request = struct {
         method: []const u8 = "initialize",
         params: Params = .{},
 
-        const Params = struct {
+        pub const Params = struct {
+            processId: ?i32 = null,
             clientInfo: ?ClientInfo = null,
+            locale: ?[]const u8 = null,
+            rootPath: ?[]const u8 = null,
+            rootUri: ?[]const u8 = null,
+            capabilities: ClientCapabilities = .{},
             trace: ?TraceValue = null,
+            workspaceFolders: ?[]WorkspaceFolder = null,
+
+            const WorkspaceFolder = struct {
+                uri: []const u8,
+                name: []const u8,
+            };
 
             const ClientInfo = struct {
                 name: []u8,
-                version: []u8,
+                version: ?[]u8 = null,
+            };
+
+            const WorkspaceClientCapabilities = struct {};
+            const WindowClientCapabilities = struct {};
+            const GeneralClientCapabilities = struct {};
+
+            const ClientCapabilities = struct {
+                workspace: ?WorkspaceClientCapabilities = null,
+                textDocument: ?TextDocumentClientCapabilities = null,
+                window: ?WindowClientCapabilities = null,
+                general: ?GeneralClientCapabilities = null,
+            };
+
+            const MarkupKind = enum {
+                PlainText,
+                Markdown,
+
+                pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !@This() {
+                    _ = options;
+                    switch (try source.nextAlloc(allocator, .alloc_if_needed)) {
+                        inline .string, .allocated_string => |s| {
+                            if (std.mem.eql(u8, s, "plaintext")) {
+                                return .PlainText;
+                            } else if (std.mem.eql(u8, s, "markdown")) {
+                                return .Markdown;
+                            } else {
+                                return error.UnexpectedToken;
+                            }
+                        },
+                        else => return error.UnexpectedToken,
+                    }
+                }
+            };
+            const CompletionItemTag = enum(i32) {
+                Deprecated = 1,
+
+                pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !@This() {
+                    _ = options;
+                    switch (try source.nextAlloc(allocator, .alloc_if_needed)) {
+                        .number => |n| {
+                            const int = try std.fmt.parseInt(i32, n, 10);
+                            return @enumFromInt(int);
+                        },
+                        else => return error.UnexpectedToken,
+                    }
+                }
+            };
+            const DiagnosticTag = enum(i32) {
+                Unnecessary = 1,
+                Deprecated = 2,
+
+                pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !@This() {
+                    _ = options;
+                    switch (try source.nextAlloc(allocator, .alloc_if_needed)) {
+                        .number => |n| {
+                            const int = try std.fmt.parseInt(i32, n, 10);
+                            return @enumFromInt(int);
+                        },
+                        else => return error.UnexpectedToken,
+                    }
+                }
+            };
+            const SymbolKind = enum(i32) {
+                File = 1,
+                Module = 2,
+                Namespace = 3,
+                Package = 4,
+                Class = 5,
+                Method = 6,
+                Property = 7,
+                Field = 8,
+                Constructor = 9,
+                Enum = 10,
+                Interface = 11,
+                Function = 12,
+                Variable = 13,
+                Constant = 14,
+                String = 15,
+                Number = 16,
+                Boolean = 17,
+                Array = 18,
+                Object = 19,
+                Key = 20,
+                Null = 21,
+                EnumMember = 22,
+                Struct = 23,
+                Event = 24,
+                Operator = 25,
+                TypeParameter = 26,
+
+                pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !@This() {
+                    _ = options;
+                    switch (try source.nextAlloc(allocator, .alloc_if_needed)) {
+                        .number => |n| {
+                            const int = try std.fmt.parseInt(i32, n, 10);
+                            return @enumFromInt(int);
+                        },
+                        else => return error.UnexpectedToken,
+                    }
+                }
+            };
+            const SymbolTag = enum(i32) {
+                Deprecated = 1,
+
+                pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !@This() {
+                    _ = options;
+                    switch (try source.nextAlloc(allocator, .alloc_if_needed)) {
+                        .number => |n| {
+                            const int = try std.fmt.parseInt(i32, n, 10);
+                            return @enumFromInt(int);
+                        },
+                        else => return error.UnexpectedToken,
+                    }
+                }
+            };
+            const PrepareSupportDefaultBehavior = enum(i32) {
+                Identifier = 1,
+
+                pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !@This() {
+                    _ = options;
+                    switch (try source.nextAlloc(allocator, .alloc_if_needed)) {
+                        .number => |n| {
+                            const int = try std.fmt.parseInt(i32, n, 10);
+                            return @enumFromInt(int);
+                        },
+                        else => return error.UnexpectedToken,
+                    }
+                }
+            };
+            const FoldingRangeKind = enum {
+                Comment,
+                Imports,
+                Region,
+
+                pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !@This() {
+                    _ = options;
+                    switch (try source.nextAlloc(allocator, .alloc_if_needed)) {
+                        inline .string, .allocated_string => |s| {
+                            if (std.mem.eql(u8, s, "comment")) {
+                                return .Comment;
+                            } else if (std.mem.eql(u8, s, "imports")) {
+                                return .Imports;
+                            } else if (std.mem.eql(u8, s, "region")) {
+                                return .Region;
+                            } else {
+                                return error.UnexpectedToken;
+                            }
+                        },
+                        else => return error.UnexpectedToken,
+                    }
+                }
+            };
+            const TokenFormat = enum {
+                Relative,
+
+                pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !@This() {
+                    _ = options;
+                    switch (try source.nextAlloc(allocator, .alloc_if_needed)) {
+                        inline .string, .allocated_string => |s| {
+                            if (std.mem.eql(u8, s, "relative")) {
+                                return .Relative;
+                            } else {
+                                return error.UnexpectedToken;
+                            }
+                        },
+                        else => return error.UnexpectedToken,
+                    }
+                }
+            };
+
+            const CompletionClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                completionItem: ?struct {
+                    snippetSupport: ?bool = null,
+                    commitCharactersSupport: ?bool = null,
+                    documentationFormat: ?[]MarkupKind = null,
+                    deprecatedSupport: ?bool = null,
+                    preselectSupport: ?bool = null,
+                    tagSupport: ?struct {
+                        valueSet: []CompletionItemTag,
+                    } = null,
+                    insertReplaceSupport: ?bool = null,
+                    resolveSupport: ?struct {
+                        properties: []const []const u8,
+                    } = null,
+                    insertTextModeSupport: ?struct {
+                        valueSet: []CompletionItem.InsertTextMode,
+                    } = null,
+                    labelDetailsSupport: ?bool = null,
+                } = null,
+                completionItemKind: ?struct {
+                    valueSet: ?[]CompletionItem.Kind = null,
+                } = null,
+                contextSupport: ?bool = null,
+                insertTextMode: ?CompletionItem.InsertTextMode = null,
+                completionList: ?struct {
+                    itemDefaults: ?[]const []const u8 = null,
+                } = null,
+            };
+            const HoverClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                contentFormat: ?[]MarkupKind = null,
+            };
+            const DeclarationClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                linkSupport: ?bool = null,
+            };
+            const DefinitionClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                linkSupport: ?bool = null,
+            };
+            const TypeDefinitionClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                linkSupport: ?bool = null,
+            };
+            const ImplementationClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                linkSupport: ?bool = null,
+            };
+            const ReferenceClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const CodeActionClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                codeActionLiteralSupport: ?struct {
+                    codeActionKind: struct {
+                        valueSet: []CodeActionKind,
+                    },
+                } = null,
+                isPreferredSupport: ?bool = null,
+                disabledSupport: ?bool = null,
+                dataSupport: ?bool = null,
+                resolveSupport: ?struct {
+                    properties: []const []const u8,
+                } = null,
+                honorsChangeAnnotations: ?bool = null,
+            };
+            const DocumentFormattingClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const DocumentRangeFormattingClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const PublishDiagnosticsClientCapabilities = struct {
+                relatedInformation: ?bool = null,
+                tagSupport: ?struct {
+                    valueSet: []DiagnosticTag,
+                } = null,
+                versionSupport: ?bool = null,
+                codeDescriptionSupport: ?bool = null,
+                dataSupport: ?bool = null,
+            };
+            const TextDocumentSyncClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                willSave: ?bool = null,
+                willSaveWaitUntil: ?bool = null,
+                didSave: ?bool = null,
+            };
+            const SignatureHelpClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                signatureInformation: ?struct {
+                    documentationFormat: ?[]MarkupKind = null,
+                    parameterInformation: ?struct {
+                        labelOffsetSupport: ?bool = null,
+                    } = null,
+                    activeParameterSupport: ?bool = null,
+                } = null,
+                contextSupport: ?bool = null,
+            };
+            const DocumentHighlightClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const DocumentSymbolClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                symbolKind: ?struct {
+                    valueSet: ?[]SymbolKind = null,
+                } = null,
+                hierarchicalDocumentSymbolSupport: ?bool = null,
+                tagSupport: ?struct {
+                    valueSet: []SymbolTag,
+                } = null,
+                labelSupport: ?bool = null,
+            };
+            const CodeLensClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const DocumentLinkClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                tooltipSupport: ?bool = null,
+            };
+            const DocumentColorClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const DocumentOnTypeFormattingClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const RenameClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                prepareSupport: ?bool = null,
+                prepareSupportDefaultBehavior: ?PrepareSupportDefaultBehavior = null,
+                honorsChangeAnnotations: ?bool = null,
+            };
+            const FoldingRangeClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                rangeLimit: ?u32 = null,
+                lineFoldingOnly: ?bool = null,
+                foldingRangeKind: ?struct {
+                    valueSet: ?[]FoldingRangeKind = null,
+                } = null,
+                foldingRange: ?struct {
+                    collapsedText: ?bool = null,
+                } = null,
+            };
+            const SelectionRangeClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const LinkedEditingRangeClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const CallHierarchyClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const SemanticTokensClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                requests: ?struct {
+                    range: ?union(enum) {
+                        boolean: bool,
+                        object: struct {},
+                    } = null,
+                    full: ?union(enum) {
+                        boolean: bool,
+                        delta_object: struct {
+                            delta: ?bool = null,
+                        },
+                    } = null,
+                } = null,
+                tokenTypes: []const []const u8,
+                tokenModifiers: []const []const u8,
+                formats: []TokenFormat,
+                overlappingTokenSupport: ?bool = null,
+                multilineTokenSupport: ?bool = null,
+                serverCancelSupport: ?bool = null,
+                augmentsSyntaxTokens: ?bool = null,
+            };
+            const MonikerClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const TypeHierarchyClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const InlineValueClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+            const InlayHintClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                resolveSupport: ?struct {
+                    properties: []const []const u8,
+                } = null,
+            };
+            const DiagnosticClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+                relatedDocumentSupport: ?bool = null,
+            };
+            const InlineCompletionClientCapabilities = struct {
+                dynamicRegistration: ?bool = null,
+            };
+
+            const TextDocumentClientCapabilities = struct {
+                synchronization: ?TextDocumentSyncClientCapabilities = null,
+                completion: ?CompletionClientCapabilities = null,
+                hover: ?HoverClientCapabilities = null,
+                signatureHelp: ?SignatureHelpClientCapabilities = null,
+                declaration: ?DeclarationClientCapabilities = null,
+                definition: ?DefinitionClientCapabilities = null,
+                typeDefinition: ?TypeDefinitionClientCapabilities = null,
+                implementation: ?ImplementationClientCapabilities = null,
+                references: ?ReferenceClientCapabilities = null,
+                documentHighlight: ?DocumentHighlightClientCapabilities = null,
+                documentSymbol: ?DocumentSymbolClientCapabilities = null,
+                codeAction: ?CodeActionClientCapabilities = null,
+                codeLens: ?CodeLensClientCapabilities = null,
+                documentLink: ?DocumentLinkClientCapabilities = null,
+                colorProvider: ?DocumentColorClientCapabilities = null,
+                formatting: ?DocumentFormattingClientCapabilities = null,
+                rangeFormatting: ?DocumentRangeFormattingClientCapabilities = null,
+                onTypeFormatting: ?DocumentOnTypeFormattingClientCapabilities = null,
+                rename: ?RenameClientCapabilities = null,
+                publishDiagnostics: ?PublishDiagnosticsClientCapabilities = null,
+                foldingRange: ?FoldingRangeClientCapabilities = null,
+                selectionRange: ?SelectionRangeClientCapabilities = null,
+                linkedEditingRange: ?LinkedEditingRangeClientCapabilities = null,
+                callHierarchy: ?CallHierarchyClientCapabilities = null,
+                semanticTokens: ?SemanticTokensClientCapabilities = null,
+                // moniker: ?MonikerClientCapabilities = null,
+                // typeHierarchy: ?TypeHierarchyClientCapabilities = null,
+                // inlineValue: ?InlineValueClientCapabilities = null,
+                // inlayHint: ?InlayHintClientCapabilities = null,
+                // diagnostic: ?DiagnosticClientCapabilities = null,
             };
         };
     };
