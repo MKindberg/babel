@@ -24,28 +24,30 @@ pub fn main() !u8 {
     var file = try std.fs.cwd().createFile("output.txt", .{ .truncate = true });
     defer file.close();
 
-    var in_buffer: [512]u8 = undefined;
     var out_buffer: [512]u8 = undefined;
-    var stdin = std.fs.File.stdin().reader(&in_buffer).interface;
+    const stdin = std.fs.File.stdin();
     var stdout = std.fs.File.stdout().writer(&out_buffer).interface;
 
-    var server = Lsp.init(allocator, &stdin, &stdout, server_info);
+    var server = Lsp.init(allocator, stdin, &stdout, server_info);
     defer server.deinit();
 
-    server.registerDocOpenCallback(handleOpenDoc);
-    server.registerDocChangeCallback(handleChangeDoc);
-    server.registerDocSaveCallback(handleSaveDoc);
-    server.registerDocCloseCallback(handleCloseDoc);
-    server.registerHoverCallback(handleHover);
-    server.registerCodeActionCallback(handleCodeAction);
+    return try server.start(setup);
+}
 
-    server.registerGoToDeclarationCallback(handleGoToDeclaration);
-    server.registerGoToDefinitionCallback(handleGotoDefinition);
-    server.registerGoToTypeDefinitionCallback(handleGoToTypeDefinition);
-    server.registerGoToImplementationCallback(handleGoToImplementation);
-    server.registerFindReferencesCallback(handleFindReferences);
+fn setup(p: Lsp.SetupParameters) void {
+    p.server.registerDocOpenCallback(handleOpenDoc);
+    p.server.registerDocChangeCallback(handleChangeDoc);
+    p.server.registerDocSaveCallback(handleSaveDoc);
+    p.server.registerDocCloseCallback(handleCloseDoc);
+    p.server.registerHoverCallback(handleHover);
+    p.server.registerCodeActionCallback(handleCodeAction);
 
-    return try server.start();
+    p.server.registerGoToDeclarationCallback(handleGoToDeclaration);
+    p.server.registerGoToDefinitionCallback(handleGotoDefinition);
+    p.server.registerGoToTypeDefinitionCallback(handleGoToTypeDefinition);
+    p.server.registerGoToImplementationCallback(handleGoToImplementation);
+    p.server.registerFindReferencesCallback(handleFindReferences);
+
 }
 
 fn handleOpenDoc(p: Lsp.OpenDocumentParameters) void {

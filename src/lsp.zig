@@ -47,6 +47,10 @@ pub var test_output_file: ?[]const u8 = null;
 
 pub fn Lsp(comptime settings: LspSettings) type {
     return struct {
+        pub const SetupParameters = struct { server: *Lsp(settings), initialize: types.Request.Initialize.Params };
+        pub const SetupReturn = void;
+        const SetupFunction = fn (_: SetupParameters) SetupReturn;
+
         pub const OpenDocumentParameters = struct { arena: std.mem.Allocator, context: *Context };
         pub const OpenDocumentReturn = void;
         const OpenDocumentCallback = fn (_: OpenDocumentParameters) OpenDocumentReturn;
@@ -102,6 +106,8 @@ pub fn Lsp(comptime settings: LspSettings) type {
         pub const RangeFormattingParameters = struct { arena: std.mem.Allocator, context: *Context, range: types.Range, options: types.FormattingOptions };
         pub const RangeFormattingReturn = ?[]const types.TextEdit;
         const RangeFormattingCallback = fn (_: RangeFormattingParameters) RangeFormattingReturn;
+
+        setup_function: ?*const SetupFunction = null,
 
         callback_doc_open: ?*const OpenDocumentCallback = null,
         callback_doc_change: ?*const ChangeDocumentCallback = null,
@@ -244,7 +250,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
             std.log.debug("Registered range formatting callback", .{});
         }
 
-        pub fn start(self: *Self) !u8 {
+        pub fn start(self: *Self, setup_function: ?*const SetupFunction) !u8 {
             var header = std.Io.Writer.Allocating.init(self.allocator);
             defer header.deinit();
             var body = std.Io.Writer.Allocating.init(self.allocator);
@@ -482,15 +488,19 @@ pub fn Lsp(comptime settings: LspSettings) type {
             }
         }
 
-        fn handleInitialize(self: Self, arena: std.mem.Allocator, request: types.Request.Initialize, server_data: types.ServerData) !void {
+        fn handleInitialize(self: *Self, arena: std.mem.Allocator, request: types.Request.Initialize, server_data: types.ServerData) !void {
             if (request.params.clientInfo) |client_info| {
-                std.log.debug("Connected to {s} {s}", .{ client_info.name, client_info.version });
+                std.log.debug("Connected to {s} {s}", .{ client_info.name, client_info.version orelse "" });
             } else {
                 std.log.debug("Connected to unknown server", .{});
             }
 
             if (request.params.trace) |trace| {
                 logger.trace_value = trace;
+            }
+
+            if (self.setup_function) |s| {
+                s(.{ .server = self, .initialize = request.params });
             }
 
             const response_msg = types.Response.Initialize.init(request.id, server_data);
