@@ -100,6 +100,10 @@ pub const Document = struct {
                 offset += idx + 1;
             } else return null;
         }
+
+        const line_len = std.mem.indexOf(u8, text[offset..], "\n") orelse text[offset..].len;
+        if (pos.character > line_len) return null;
+
         return offset + pos.character;
     }
 
@@ -165,7 +169,7 @@ pub const FindIterator = struct {
         };
     }
 
-    pub fn initWithOffset(text: []const u8, pattern: []const u8, start: usize, end: usize) Self {
+    pub fn initWithOffset(text: []const u8, pattern: []const u8, start: usize, end: ?usize) Self {
         return FindIterator{
             .text = text,
             .pattern = pattern,
@@ -192,7 +196,6 @@ pub const FindIterator = struct {
         return null;
     }
 };
-
 
 test "addText" {
     const allocator = std.testing.allocator;
@@ -272,4 +275,221 @@ test "RemoveTextAtEnd" {
         .end = .{ .line = 0, .character = 11 },
     });
     try std.testing.expectEqualStrings("Hello worl", doc.text);
+}
+
+test "RemoveTextBothEnds" {
+    const allocator = std.testing.allocator;
+    var doc = try Document.init(allocator, "", "", "Hello world");
+    defer doc.deinit();
+    try doc.updateAll(&[_]types.ChangeEvent{
+        .{
+            .range = .{
+                .start = .{ .line = 0, .character = 10 },
+                .end = .{ .line = 0, .character = 11 },
+            },
+            .text = "",
+        },
+        .{
+            .range = .{
+                .start = .{ .line = 0, .character = 0 },
+                .end = .{ .line = 0, .character = 1 },
+            },
+            .text = "",
+        },
+    });
+    try std.testing.expectEqualStrings("ello worl", doc.text);
+}
+
+test "ReplaceText" {
+    const allocator = std.testing.allocator;
+    var doc = try Document.init(allocator, "", "", "Hello world");
+    defer doc.deinit();
+    try doc.updateFull("Hi");
+    try std.testing.expectEqualStrings("Hi", doc.text);
+}
+
+test "ReplaceText2" {
+    const allocator = std.testing.allocator;
+    var doc = try Document.init(allocator, "", "", "Hello world");
+    defer doc.deinit();
+    try doc.updateFull("Longer text to overwrite");
+    try std.testing.expectEqualStrings("Longer text to overwrite", doc.text);
+}
+
+test "idxToPosText" {
+    const text = "hello\nworld\nzig";
+    try std.testing.expectEqual(types.Position{ .line = 0, .character = 0 }, Document.idxToPosText(text, 0));
+    try std.testing.expectEqual(types.Position{ .line = 0, .character = 5 }, Document.idxToPosText(text, 5));
+    try std.testing.expectEqual(types.Position{ .line = 1, .character = 0 }, Document.idxToPosText(text, 6));
+    try std.testing.expectEqual(types.Position{ .line = 1, .character = 5 }, Document.idxToPosText(text, 11));
+    try std.testing.expectEqual(types.Position{ .line = 2, .character = 0 }, Document.idxToPosText(text, 12));
+    try std.testing.expectEqual(types.Position{ .line = 2, .character = 3 }, Document.idxToPosText(text, 15));
+    try std.testing.expectEqual(null, Document.idxToPosText(text, 20));
+}
+
+test "posToIdxText" {
+    const text = "hello\nworld\nzig";
+    try std.testing.expectEqual(0, Document.posToIdxText(text, .{ .line = 0, .character = 0 }));
+    try std.testing.expectEqual(5, Document.posToIdxText(text, .{ .line = 0, .character = 5 }));
+    try std.testing.expectEqual(6, Document.posToIdxText(text, .{ .line = 1, .character = 0 }));
+    try std.testing.expectEqual(11, Document.posToIdxText(text, .{ .line = 1, .character = 5 }));
+    try std.testing.expectEqual(12, Document.posToIdxText(text, .{ .line = 2, .character = 0 }));
+    try std.testing.expectEqual(15, Document.posToIdxText(text, .{ .line = 2, .character = 3 }));
+    try std.testing.expectEqual(null, Document.posToIdxText(text, .{ .line = 5, .character = 0 }));
+    try std.testing.expectEqual(null, Document.posToIdxText(text, .{ .line = 0, .character = 20 }));
+}
+
+test "idxToPos" {
+    const allocator = std.testing.allocator;
+    var doc = try Document.init(allocator, "", "", "hello\nworld\nzig");
+    defer doc.deinit();
+
+    try std.testing.expectEqual(types.Position{ .line = 0, .character = 0 }, doc.idxToPos(0));
+    try std.testing.expectEqual(types.Position{ .line = 0, .character = 5 }, doc.idxToPos(5));
+    try std.testing.expectEqual(types.Position{ .line = 1, .character = 0 }, doc.idxToPos(6));
+    try std.testing.expectEqual(types.Position{ .line = 2, .character = 3 }, doc.idxToPos(15));
+    try std.testing.expectEqual(null, doc.idxToPos(20));
+}
+
+test "posToIdx" {
+    const allocator = std.testing.allocator;
+    var doc = try Document.init(allocator, "", "", "hello\nworld\nzig");
+    defer doc.deinit();
+
+    try std.testing.expectEqual(0, doc.posToIdx(.{ .line = 0, .character = 0 }));
+    try std.testing.expectEqual(5, doc.posToIdx(.{ .line = 0, .character = 5 }));
+    try std.testing.expectEqual(6, doc.posToIdx(.{ .line = 1, .character = 0 }));
+    try std.testing.expectEqual(15, doc.posToIdx(.{ .line = 2, .character = 3 }));
+    try std.testing.expectEqual(null, doc.posToIdx(.{ .line = 5, .character = 0 }));
+}
+
+test "update with range" {
+    const allocator = std.testing.allocator;
+    var doc = try Document.init(allocator, "", "", "hello world");
+    defer doc.deinit();
+
+    try doc.update(.{
+        .range = .{
+            .start = .{ .line = 0, .character = 5 },
+            .end = .{ .line = 0, .character = 6 },
+        },
+        .text = ",",
+    });
+    try std.testing.expectEqualStrings("hello,world", doc.text);
+}
+
+test "update without range (full update)" {
+    const allocator = std.testing.allocator;
+    var doc = try Document.init(allocator, "", "", "hello world");
+    defer doc.deinit();
+
+    try doc.update(.{
+        .range = null,
+        .text = "new text",
+    });
+    try std.testing.expectEqualStrings("new text", doc.text);
+}
+
+test "getLine" {
+    const allocator = std.testing.allocator;
+    var doc = try Document.init(allocator, "", "", "hello\nworld\nzig");
+    defer doc.deinit();
+
+    try std.testing.expectEqualStrings("hello", doc.getLine(.{ .line = 0, .character = 2 }).?);
+    try std.testing.expectEqualStrings("world", doc.getLine(.{ .line = 1, .character = 3 }).?);
+    try std.testing.expectEqualStrings("zig", doc.getLine(.{ .line = 2, .character = 1 }).?);
+    try std.testing.expectEqual(null, doc.getLine(.{ .line = 5, .character = 0 }));
+}
+
+test "getWord" {
+    const allocator = std.testing.allocator;
+    var doc = try Document.init(allocator, "", "", "hello world zig");
+    defer doc.deinit();
+
+    try std.testing.expectEqualStrings("hello", doc.getWord(.{ .line = 0, .character = 2 }, " \n\t").?);
+    try std.testing.expectEqualStrings("world", doc.getWord(.{ .line = 0, .character = 7 }, " \n\t").?);
+    try std.testing.expectEqualStrings("zig", doc.getWord(.{ .line = 0, .character = 13 }, " \n\t").?);
+    try std.testing.expectEqual(null, doc.getWord(.{ .line = 5, .character = 0 }, " \n\t"));
+}
+
+test "getRange" {
+    const allocator = std.testing.allocator;
+    var doc = try Document.init(allocator, "", "", "hello world zig");
+    defer doc.deinit();
+
+    try std.testing.expectEqualStrings("hello", doc.getRange(.{
+        .start = .{ .line = 0, .character = 0 },
+        .end = .{ .line = 0, .character = 5 },
+    }).?);
+    try std.testing.expectEqualStrings("world", doc.getRange(.{
+        .start = .{ .line = 0, .character = 6 },
+        .end = .{ .line = 0, .character = 11 },
+    }).?);
+    try std.testing.expectEqual(null, doc.getRange(.{
+        .start = .{ .line = 0, .character = 10 },
+        .end = .{ .line = 0, .character = 5 },
+    })); // end < start
+    try std.testing.expectEqual(null, doc.getRange(.{
+        .start = .{ .line = 5, .character = 0 },
+        .end = .{ .line = 5, .character = 5 },
+    })); // start out of bounds
+}
+
+test "find" {
+    const allocator = std.testing.allocator;
+    var doc = try Document.init(allocator, "", "", "hello world hello zig hello");
+    defer doc.deinit();
+
+    var iter = doc.find("hello");
+    var count: usize = 0;
+    while (iter.next()) |_| {
+        count += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 3), count);
+}
+
+test "findInRange" {
+    const allocator = std.testing.allocator;
+    var doc = try Document.init(allocator, "", "", "hello world hello zig hello");
+    defer doc.deinit();
+
+    var iter = doc.findInRange(.{
+        .start = .{ .line = 0, .character = 0 },
+        .end = .{ .line = 0, .character = 12 },
+    }, "hello");
+    var count: usize = 0;
+    while (iter.next()) |_| {
+        count += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 2), count); // Should find "hello" at pos 0 and in "world"
+}
+
+test "FindIterator init and next" {
+    const text = "hello world hello zig";
+    var iter = FindIterator.init(text, "hello");
+
+    const first = iter.next().?;
+    try std.testing.expectEqual(types.Position{ .line = 0, .character = 0 }, first.start);
+    try std.testing.expectEqual(types.Position{ .line = 0, .character = 5 }, first.end);
+
+    const second = iter.next().?;
+    try std.testing.expectEqual(types.Position{ .line = 0, .character = 12 }, second.start);
+    try std.testing.expectEqual(types.Position{ .line = 0, .character = 17 }, second.end);
+
+    try std.testing.expectEqual(null, iter.next());
+}
+
+test "FindIterator initWithOffset" {
+    const text = "hello world hello zig hello";
+    var iter = FindIterator.initWithOffset(text, "hello", 6, null);
+
+    const first = iter.next().?;
+    try std.testing.expectEqual(types.Position{ .line = 0, .character = 12 }, first.start);
+    try std.testing.expectEqual(types.Position{ .line = 0, .character = 17 }, first.end);
+
+    const second = iter.next().?;
+    try std.testing.expectEqual(types.Position{ .line = 0, .character = 22 }, second.start);
+    try std.testing.expectEqual(types.Position{ .line = 0, .character = 27 }, second.end);
+
+    try std.testing.expectEqual(null, iter.next());
 }

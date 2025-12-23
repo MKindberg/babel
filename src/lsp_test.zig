@@ -62,7 +62,7 @@ test "init-shutdown" {
 
     var server = Lsp(.{}).init(std.testing.allocator, &reader, &writer, .{ .name = "testing" });
     defer server.deinit();
-    const res = try server.start();
+    const res = try server.start(null);
 
     try std.testing.expectEqual(0, res);
 }
