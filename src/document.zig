@@ -38,7 +38,7 @@ pub const Document = struct {
 
     fn updateFull(self: *Document, text: []const u8) !void {
         const new_len = text.len;
-        if (new_len > self.data.len) {
+        if (new_len > self.data.len or new_len < self.data.len / 4) {
             self.data = try self.allocator.realloc(self.data, Document.allocationSize(new_len));
         }
         std.mem.copyForwards(u8, self.data, text);
@@ -64,7 +64,7 @@ pub const Document = struct {
         const range_len = range_end - range_start;
         const new_len = self.text.len + text.len - range_len;
         const old_len = self.text.len;
-        if (new_len > self.data.len) {
+        if (new_len > self.data.len or new_len < self.data.len / 4) {
             self.data = try self.allocator.realloc(self.data, Document.allocationSize(new_len));
         }
 
