@@ -7,12 +7,14 @@ pub fn build(b: *std.Build) void {
     const build_steps = .{
         .@"test" = b.step("test", "Run nvim test"),
         .unittest = b.step("unittest", "Run unit tests"),
+        .coverage = b.step("coverage", "Run unit tests with kcov coverage"),
     };
 
     const modules = createModules(b, .{ .target = target, .optimize = optimize });
 
     buildTest(b, build_steps.@"test", modules.lsp, .{ .target = target, .optimize = optimize });
     buildUnitTest(b, build_steps.unittest, .{ .target = target, .optimize = optimize });
+    buildCovTest(b, build_steps.coverage, .{ .target = target, .optimize = optimize });
 }
 
 fn createModules(
@@ -85,4 +87,29 @@ fn buildUnitTest(
     });
     const run_unit_test = b.addRunArtifact(unit_test);
     step.dependOn(&run_unit_test.step);
+}
+
+fn buildCovTest(
+    b: *std.Build,
+    step: *std.Build.Step,
+    options: struct {
+        target: std.Build.ResolvedTarget,
+        optimize: std.builtin.OptimizeMode,
+    },
+) void {
+    const cov_test = b.addTest(.{
+        .name = "test-unit",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/test.zig"),
+            .target = options.target,
+            .optimize = options.optimize,
+        }),
+        .filters = b.args orelse &.{},
+        .use_llvm = true,
+    });
+
+    cov_test.setExecCmd(&[_]?[]const u8{ "kcov","--clean", "--include-pattern=src", "cov", null });
+    const run_cov_test = b.addRunArtifact(cov_test);
+    run_cov_test.has_side_effects = true;
+    step.dependOn(&run_cov_test.step);
 }
