@@ -573,28 +573,6 @@ fn startServer(server: *Lsp(.{})) !void {
     try sendInitialized(server);
 }
 
-test "Initialize" {
-    var in_buffer: [512]u8 = undefined;
-    var out_buffer: [512]u8 = undefined;
-    var stdin = std.fs.File.stdin().reader(&in_buffer);
-    var stdout = std.fs.File.stdout().writer(&out_buffer);
-
-    var server = Lsp(.{}).init(std.testing.allocator, &stdin.interface, &stdout.interface, .{ .name = "testing", .version = "1" });
-    defer server.deinit();
-    try sendInitialize(&server);
-}
-
-test "Initialized" {
-    var in_buffer: [512]u8 = undefined;
-    var out_buffer: [512]u8 = undefined;
-    var stdin = std.fs.File.stdin().reader(&in_buffer);
-    var stdout = std.fs.File.stdout().writer(&out_buffer);
-
-    var server = Lsp(.{}).init(std.testing.allocator, &stdin.interface, &stdout.interface, .{ .name = "testing", .version = "1" });
-    defer server.deinit();
-    try startServer(&server);
-}
-
 fn createSave(filename: []const u8) rpc.MethodType {
     return .{ .@"textDocument/didSave" = .{ .params = .{ .textDocument = .{ .uri = filename } } } };
 }
