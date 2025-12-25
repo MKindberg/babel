@@ -11,7 +11,7 @@ pub const Document = struct {
     data: []u8,
 
     pub fn init(allocator: std.mem.Allocator, uri: []const u8, language: []const u8, content: []const u8) !Document {
-        const data = try allocator.alloc(u8, content.len + content.len / 3);
+        const data = try allocator.alloc(u8, Document.allocationSize(content.len));
         std.mem.copyForwards(u8, data, content);
         const text = data[0..content.len];
         return Document{
@@ -29,10 +29,17 @@ pub const Document = struct {
         self.allocator.free(self.data);
     }
 
+    fn allocationSize(size: usize) usize {
+        if (size < 64 * 1024) return size * 2;
+        if (size < 512 * 1024) return size + size / 2;
+        if (size < 1024 * 1024) return size + size / 4;
+        return 64 * 1024;
+    }
+
     fn updateFull(self: *Document, text: []const u8) !void {
         const new_len = text.len;
         if (new_len > self.data.len) {
-            self.data = try self.allocator.realloc(self.data, new_len + new_len / 3);
+            self.data = try self.allocator.realloc(self.data, Document.allocationSize(new_len));
         }
         std.mem.copyForwards(u8, self.data, text);
         @memset(self.data[new_len..], 0);
@@ -46,6 +53,7 @@ pub const Document = struct {
         }
     }
     pub fn updateAll(self: *Document, changes: []const types.ChangeEvent) !void {
+        // The LSP spec says that updates should be applied in the order that arrived.
         for (changes) |change| {
             try self.update(change);
         }
@@ -57,7 +65,7 @@ pub const Document = struct {
         const new_len = self.text.len + text.len - range_len;
         const old_len = self.text.len;
         if (new_len > self.data.len) {
-            self.data = try self.allocator.realloc(self.data, new_len + new_len / 3);
+            self.data = try self.allocator.realloc(self.data, Document.allocationSize(new_len));
         }
 
         if (range_len > text.len) {
