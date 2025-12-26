@@ -717,6 +717,7 @@ pub const Notification = struct {
     };
 
     pub const PublishDiagnostics = struct {
+        pub const outgoing: bool = true;
         jsonrpc: []const u8 = "2.0",
         method: []const u8 = "textDocument/publishDiagnostics",
         params: Params,
@@ -732,6 +733,7 @@ pub const Notification = struct {
     };
 
     pub const LogMessage = struct {
+        pub const outgoing: bool = true;
         jsonrpc: []const u8 = "2.0",
         method: []const u8 = "window/logMessage",
         params: Params,
@@ -742,6 +744,7 @@ pub const Notification = struct {
     };
 
     pub const LogTrace = struct {
+        pub const outgoing: bool = true;
         jsonrpc: []const u8 = "2.0",
         method: []const u8 = "$/logTrace",
         params: Params,

@@ -297,7 +297,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
         }
 
         fn handleMessage(self: *Self, allocator: std.mem.Allocator, msg: rpc.MethodType) !RunState {
-            std.log.debug("Received request: {s}", .{msg.toString()});
+            std.log.debug("Received request: {s}", .{@tagName(msg)});
 
             if (!self.server_state.validMessage(msg)) {
                 switch (self.server_state) {
