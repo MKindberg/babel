@@ -251,38 +251,16 @@ pub fn Lsp(comptime settings: LspSettings) type {
         }
 
         pub fn start(self: *Self, setup_function: ?*const SetupFunction) !u8 {
-            var header = std.Io.Writer.Allocating.init(self.allocator);
-            defer header.deinit();
-            var body = std.Io.Writer.Allocating.init(self.allocator);
-            defer body.deinit();
+            var it = MessageIterator.init(self.allocator, self.input_stream);
+            defer it.deinit();
 
             self.setup_function = setup_function;
 
             var run_state = RunState.Run;
-            outer: while (run_state == RunState.Run) {
-                std.log.debug("Waiting for header", .{});
-                const read = try reader.readUntilDelimiterOrEof(self.input_stream, &header.writer, "\r\n\r\n");
-                if (read == 0) break;
-
-                const content_len_str = "Content-Length: ";
-                const content_len = if (std.mem.indexOf(u8, header.written(), content_len_str)) |idx|
-                    try std.fmt.parseInt(usize, header.written()[idx + content_len_str.len ..], 10)
-                else {
-                    std.log.warn("Content-Length not found in header\n'{s}'", .{header.written()});
-                    break :outer;
-                };
-                header.clearRetainingCapacity();
-
-                try self.input_stream.streamExact(&body.writer, content_len);
-                var arena = std.heap.ArenaAllocator.init(self.allocator);
-                defer arena.deinit();
-                defer body.clearRetainingCapacity();
-
-                const decoded = rpc.decodeMessage(arena.allocator(), body.written()) catch |e| {
-                    std.log.warn("Failed to decode message: {any}\n", .{e});
-                    continue;
-                };
-                run_state = try self.handleMessage(arena.allocator(), decoded);
+            while (try it.next(self.allocator)) |message| {
+                defer message.arena.deinit();
+                run_state = try self.handleMessage(message.arena.allocator(), message.decoded);
+                if (run_state != RunState.Run) break;
             }
             if (run_state == RunState.ShutdownOk) return 0;
             return 1;
@@ -293,7 +271,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 std.log.err("Cannot send message when server not in running state", .{});
                 return;
             }
-            try writeResponseInternal(allocator, self.output_stream, msg);
+            try writeResponseNoCheck(allocator, self.output_stream, msg);
         }
 
         fn handleMessage(self: *Self, allocator: std.mem.Allocator, msg: rpc.MethodType) !RunState {
@@ -480,13 +458,13 @@ pub fn Lsp(comptime settings: LspSettings) type {
 
         fn handleShutdown(self: Self, arena: std.mem.Allocator, request: types.Request.Shutdown) !void {
             const response = types.Response.Shutdown.init(request);
-            try writeResponseInternal(arena, self.output_stream, response);
+            try writeResponseNoCheck(arena, self.output_stream, response);
         }
 
         fn replyInvalidRequest(self: Self, arena: std.mem.Allocator, request: anytype, error_code: types.ErrorCode, error_message: []const u8) !void {
             if (@hasField(@TypeOf(request), "id")) {
                 const reply = types.Response.Error.init(request.id, error_code, error_message);
-                try writeResponseInternal(arena, self.output_stream, reply);
+                try writeResponseNoCheck(arena, self.output_stream, reply);
             }
         }
 
@@ -507,7 +485,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
 
             const response_msg = types.Response.Initialize.init(request.id, self.server_data);
 
-            try writeResponseInternal(arena, self.output_stream, response_msg);
+            try writeResponseNoCheck(arena, self.output_stream, response_msg);
         }
 
         fn openDocument(self: *Self, name: []const u8, language: []const u8, content: []const u8) !void {
@@ -532,7 +510,65 @@ pub fn Lsp(comptime settings: LspSettings) type {
     };
 }
 
-pub fn writeResponseInternal(allocator: std.mem.Allocator, output_stream: *std.Io.Writer, msg: anytype) !void {
+pub const MessageIterator = struct {
+    const Self = @This();
+
+    pub const Error = error{
+        InvalidHeader,
+        DecodeFailure,
+    };
+
+    input_stream: *std.Io.Reader,
+    header_buf: std.Io.Writer.Allocating,
+    body_buf: std.Io.Writer.Allocating,
+
+    pub fn init(allocator: std.mem.Allocator, input_stream: *std.Io.Reader) Self {
+        const header = std.Io.Writer.Allocating.init(allocator);
+        const body = std.Io.Writer.Allocating.init(allocator);
+
+        return Self{
+            .input_stream = input_stream,
+            .header_buf = header,
+            .body_buf = body,
+        };
+    }
+    pub fn deinit(self: *Self) void {
+        self.header_buf.deinit();
+        self.body_buf.deinit();
+    }
+    pub fn next(self: *Self, allocator: std.mem.Allocator) !?struct {
+        decoded: rpc.MethodType,
+        arena: *std.heap.ArenaAllocator,
+    } {
+        std.log.debug("Waiting for header", .{});
+        const read = try reader.readUntilDelimiterOrEof(self.input_stream, &self.header_buf.writer, "\r\n\r\n");
+        if (read == 0) return null;
+
+        const content_len_str = "Content-Length: ";
+        const content_len = if (std.mem.indexOf(u8, self.header_buf.written(), content_len_str)) |idx|
+            try std.fmt.parseInt(usize, self.header_buf.written()[idx + content_len_str.len ..], 10)
+        else {
+            std.log.warn("Content-Length not found in header\n'{s}'", .{self.header_buf.written()});
+            return Error.InvalidHeader;
+        };
+        self.header_buf.clearRetainingCapacity();
+
+        try self.input_stream.streamExact(&self.body_buf.writer, content_len);
+        defer self.body_buf.clearRetainingCapacity();
+
+        var arena = std.heap.ArenaAllocator.init(allocator);
+
+        const decoded = rpc.decodeMessage(arena.allocator(), self.body_buf.written()) catch |e| {
+            std.log.warn("Failed to decode message: {any}\n", .{e});
+            return Error.DecodeFailure;
+        };
+        return .{ .decoded = decoded, .arena = &arena };
+    }
+};
+
+/// Send a message to the client without checking if the server is in the correct state
+/// (only log messages are allowed to be sent if the server isn't initialized)
+pub fn writeResponseNoCheck(allocator: std.mem.Allocator, output_stream: *std.Io.Writer, msg: anytype) !void {
     const response = try rpc.encodeMessage(allocator, msg);
     defer allocator.free(response);
 

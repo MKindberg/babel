@@ -65,7 +65,7 @@ const DecodeError = error{
     UnknownMethod,
 };
 
-pub const DecodedMessage = struct {
+const DecodedMessage = struct {
     method: MethodType,
 };
 
