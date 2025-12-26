@@ -468,7 +468,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
             return RunState.Run;
         }
 
-        fn handleGoTo(self: *Self, alloc: std.mem.Allocator, request: types.Request.PositionRequest, callback: anytype) !void {
+        fn handleGoTo(self: *Self, alloc: std.mem.Allocator, request: anytype, callback: anytype) !void {
             const params = request.params;
             const context = self.contexts.getPtr(params.textDocument.uri).?;
             const response = if (callback(.{ .arena = alloc, .context = context, .position = params.position })) |location|

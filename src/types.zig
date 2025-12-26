@@ -430,10 +430,40 @@ pub const Request = struct {
     };
 
     // Used by hover, goto definition, etc.
-    pub const PositionRequest = struct {
+    pub const Hover = struct {
         jsonrpc: []const u8 = "2.0",
         id: ID,
-        method: []const u8,
+        method: []const u8 = "textDocument/hover",
+        params: PositionParams,
+    };
+    pub const Declaration = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: ID,
+        method: []const u8 = "textDocument/declaration",
+        params: PositionParams,
+    };
+    pub const Definition = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: ID,
+        method: []const u8 = "textDocument/definition",
+        params: PositionParams,
+    };
+    pub const TypeDefinition = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: ID,
+        method: []const u8 = "textDocument/typeDefinition",
+        params: PositionParams,
+    };
+    pub const Implementation = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: ID,
+        method: []const u8 = "textDocument/implementation",
+        params: PositionParams,
+    };
+    pub const References = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: ID,
+        method: []const u8 = "textDocument/references",
         params: PositionParams,
     };
 
@@ -636,6 +666,10 @@ pub const Notification = struct {
     pub const Notification = struct {
         jsonrpc: []const u8 = "2.0",
         method: []const u8,
+    };
+    pub const Initialized = struct {
+        jsonrpc: []const u8 = "2.0",
+        method: []const u8 = "initialized",
     };
     pub const DidOpenTextDocument = struct {
         jsonrpc: []const u8 = "2.0",
