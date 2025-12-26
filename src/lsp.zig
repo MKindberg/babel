@@ -312,7 +312,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
             switch (msg) {
                 rpc.MethodType.initialize => |request| {
                     if (!self.server_data.capabilities.textDocumentSync.openClose) @panic("TextDocumentSync.OpenClose must be true");
-                    try self.handleInitialize(allocator, request, self.server_data);
+                    try self.handleInitialize(allocator, request);
                     self.server_state = .Initialize;
                 },
                 rpc.MethodType.initialized => {
@@ -490,7 +490,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
             }
         }
 
-        fn handleInitialize(self: *Self, arena: std.mem.Allocator, request: types.Request.Initialize, server_data: types.ServerData) !void {
+        fn handleInitialize(self: *Self, arena: std.mem.Allocator, request: types.Request.Initialize) !void {
             if (request.params.clientInfo) |client_info| {
                 std.log.debug("Connected to {s} {s}", .{ client_info.name, client_info.version orelse "" });
             } else {
@@ -505,7 +505,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 s(.{ .server = self, .initialize = request.params });
             }
 
-            const response_msg = types.Response.Initialize.init(request.id, server_data);
+            const response_msg = types.Response.Initialize.init(request.id, self.server_data);
 
             try writeResponseInternal(arena, self.output_stream, response_msg);
         }

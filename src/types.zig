@@ -357,15 +357,9 @@ pub const Request = struct {
             const SemanticTokensClientCapabilities = struct {
                 dynamicRegistration: ?bool = null,
                 requests: ?struct {
-                    range: ?union(enum) {
-                        boolean: bool,
-                        object: struct {},
-                    } = null,
-                    full: ?union(enum) {
-                        boolean: bool,
-                        delta_object: struct {
-                            delta: ?bool = null,
-                        },
+                    range: ?bool = null,
+                    full: ?struct {
+                        delta: ?bool = null,
                     } = null,
                 } = null,
                 tokenTypes: []const []const u8,
@@ -421,15 +415,16 @@ pub const Request = struct {
                 rename: ?RenameClientCapabilities = null,
                 publishDiagnostics: ?PublishDiagnosticsClientCapabilities = null,
                 foldingRange: ?FoldingRangeClientCapabilities = null,
+                //
                 selectionRange: ?SelectionRangeClientCapabilities = null,
                 linkedEditingRange: ?LinkedEditingRangeClientCapabilities = null,
                 callHierarchy: ?CallHierarchyClientCapabilities = null,
                 semanticTokens: ?SemanticTokensClientCapabilities = null,
-                // moniker: ?MonikerClientCapabilities = null,
-                // typeHierarchy: ?TypeHierarchyClientCapabilities = null,
-                // inlineValue: ?InlineValueClientCapabilities = null,
-                // inlayHint: ?InlayHintClientCapabilities = null,
-                // diagnostic: ?DiagnosticClientCapabilities = null,
+                moniker: ?MonikerClientCapabilities = null,
+                typeHierarchy: ?TypeHierarchyClientCapabilities = null,
+                inlineValue: ?InlineValueClientCapabilities = null,
+                inlayHint: ?InlayHintClientCapabilities = null,
+                diagnostic: ?DiagnosticClientCapabilities = null,
             };
         };
     };

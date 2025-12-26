@@ -21,15 +21,12 @@ pub fn main() !u8 {
         .version = "0.1.0",
     };
 
-    var file = try std.fs.cwd().createFile("output.txt", .{ .truncate = true });
-    defer file.close();
-
     var out_buffer: [512]u8 = undefined;
     var in_buffer: [512]u8 = undefined;
-    var stdin = std.fs.File.stdin().reader(&in_buffer).interface;
-    var stdout = std.fs.File.stdout().writer(&out_buffer).interface;
+    var stdin = std.fs.File.stdin().reader(&in_buffer);
+    var stdout = std.fs.File.stdout().writer(&out_buffer);
 
-    var server = Lsp.init(allocator, &stdin, &stdout, server_info);
+    var server = Lsp.init(allocator, &stdin.interface, &stdout.interface, server_info);
     defer server.deinit();
 
     return try server.start(setup);
@@ -97,18 +94,11 @@ fn handleFindReferences(p: Lsp.FindReferencesParameters) ?[]lsp.types.Location {
 test "Run nvim" {
     const nvim_config =
         \\ vim.lsp.set_log_level("TRACE")
-        \\local start_tester = function()
-        \\    local client = vim.lsp.start_client { name = "tester", cmd = { "zig-out/bin/test" }, trace = "verbose"}
-        \\
-        \\    if not client then
-        \\        vim.notify("Failed to start tester")
-        \\    else
-        \\        vim.api.nvim_create_autocmd("FileType",
-        \\            { pattern = "text", callback = function() vim.lsp.buf_attach_client(0, client) end }
-        \\        )
-        \\    end
-        \\end
-        \\start_tester()
+        \\ vim.lsp.config.tester = {
+        \\     cmd = {"zig-out/bin/test"},
+        \\     filetypes = {"text"},
+        \\ }
+        \\ vim.lsp.enable("tester")
     ;
     std.fs.cwd().writeFile(.{ .sub_path = "nvim_config.lua", .data = nvim_config }) catch unreachable;
     defer std.fs.cwd().deleteFile("nvim_config.lua") catch {};

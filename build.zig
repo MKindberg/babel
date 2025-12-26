@@ -64,6 +64,7 @@ fn buildTest(
     nvim_test.root_module.addImport("lsp", lsp);
     const run_test = b.addRunArtifact(nvim_test);
     run_test.step.dependOn(&tester.step);
+    run_test.has_side_effects = true;
 
     step.dependOn(&run_test.step);
 }
