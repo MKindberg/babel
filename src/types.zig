@@ -322,7 +322,7 @@ pub const Request = struct {
                 dynamicRegistration: ?bool = null,
                 tooltipSupport: ?bool = null,
             };
-            const DocumentColorClientCapabilities = struct {
+            const ColorClientCapabilities = struct {
                 dynamicRegistration: ?bool = null,
             };
             const DocumentOnTypeFormattingClientCapabilities = struct {
@@ -408,7 +408,7 @@ pub const Request = struct {
                 codeAction: ?CodeActionClientCapabilities = null,
                 codeLens: ?CodeLensClientCapabilities = null,
                 documentLink: ?DocumentLinkClientCapabilities = null,
-                colorProvider: ?DocumentColorClientCapabilities = null,
+                colorProvider: ?ColorClientCapabilities = null,
                 formatting: ?DocumentFormattingClientCapabilities = null,
                 rangeFormatting: ?DocumentRangeFormattingClientCapabilities = null,
                 onTypeFormatting: ?DocumentOnTypeFormattingClientCapabilities = null,
@@ -531,6 +531,17 @@ pub const Request = struct {
             textDocument: TextDocumentIdentifier,
             range: Range,
             options: FormattingOptions,
+        };
+    };
+
+    pub const Color = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: ID,
+        method: []const u8 = "textDocument/documentColor",
+        params: Params,
+
+        pub const Params = struct {
+            textDocument: TextDocumentIdentifier,
         };
     };
 };
@@ -659,6 +670,12 @@ pub const Response = struct {
         jsonrpc: []const u8 = "2.0",
         id: ID,
         result: []const TextEdit = &[_]TextEdit{},
+    };
+
+    pub const Color = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: ID,
+        result: []const ColorInformation,
     };
 };
 
@@ -800,6 +817,7 @@ pub const ServerData = struct {
         documentFormattingProvider: bool = false,
         documentRangeFormattingProvider: bool = false,
         completionProvider: ?struct {} = .{},
+        colorProvider: bool = false,
     };
 };
 
@@ -1090,4 +1108,32 @@ pub const FormattingOptions = struct {
 pub const ServerInfo = struct {
     name: []const u8,
     version: ?[]const u8 = null,
+};
+
+pub const ColorInformation = struct {
+    range: Range,
+    color: Color,
+};
+pub const Color = struct {
+    red: f64 = 0,
+    green: f64 = 0,
+    blue: f64 = 0,
+    alpha: f64 = 1,
+
+    pub fn fromHex(hex: []const u8) ?Color {
+        if (hex.len < 6) return null;
+        var start: usize = 0;
+        if (hex[0] == '#') start += 1;
+        if (hex[0] == '0' and hex[1] == 'x') start += 2;
+        var buf: [4]u8 = undefined;
+        const bytes = std.fmt.hexToBytes(&buf, hex[start..]) catch return null;
+        if (bytes.len != 3 and bytes.len != 4) return null;
+        var color = Color{};
+        color.red = @as(f64, @floatFromInt(bytes[0])) / 255.0;
+        color.green = @as(f64, @floatFromInt(bytes[1])) / 255.0;
+        color.blue = @as(f64, @floatFromInt(bytes[2])) / 255.0;
+        if (bytes.len == 4) color.alpha = @as(f64, @floatFromInt(bytes[3])) / 255.0;
+
+        return color;
+    }
 };

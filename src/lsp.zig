@@ -49,63 +49,67 @@ pub fn Lsp(comptime settings: LspSettings) type {
     return struct {
         pub const SetupParameters = struct { server: *Lsp(settings), initialize: types.Request.Initialize.Params };
         pub const SetupReturn = void;
-        const SetupFunction = fn (_: SetupParameters) SetupReturn;
+        pub const SetupFunction = fn (_: SetupParameters) SetupReturn;
 
         pub const OpenDocumentParameters = struct { arena: std.mem.Allocator, context: *Context };
         pub const OpenDocumentReturn = void;
-        const OpenDocumentCallback = fn (_: OpenDocumentParameters) OpenDocumentReturn;
+        pub const OpenDocumentCallback = fn (_: OpenDocumentParameters) OpenDocumentReturn;
 
         pub const ChangeDocumentParameters = struct { arena: std.mem.Allocator, context: *Context, changes: []const types.ChangeEvent };
         pub const ChangeDocumentReturn = void;
-        const ChangeDocumentCallback = fn (_: ChangeDocumentParameters) ChangeDocumentReturn;
+        pub const ChangeDocumentCallback = fn (_: ChangeDocumentParameters) ChangeDocumentReturn;
 
         pub const SaveDocumentParameters = struct { arena: std.mem.Allocator, context: *Context };
         pub const SaveDocumentReturn = void;
-        const SaveDocumentCallback = fn (_: SaveDocumentParameters) SaveDocumentReturn;
+        pub const SaveDocumentCallback = fn (_: SaveDocumentParameters) SaveDocumentReturn;
 
         pub const CloseDocumentParameters = struct { arena: std.mem.Allocator, context: *Context };
         pub const CloseDocumentReturn = void;
-        const CloseDocumentCallback = fn (_: CloseDocumentParameters) CloseDocumentReturn;
+        pub const CloseDocumentCallback = fn (_: CloseDocumentParameters) CloseDocumentReturn;
 
         pub const HoverParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
         pub const HoverReturn = ?[]const u8;
-        const HoverCallback = fn (_: HoverParameters) HoverReturn;
+        pub const HoverCallback = fn (_: HoverParameters) HoverReturn;
 
         pub const CodeActionParameters = struct { arena: std.mem.Allocator, context: *Context, range: types.Range };
         pub const CodeActionReturn = ?[]const types.Response.CodeAction.Result;
-        const CodeActionCallback = fn (_: CodeActionParameters) CodeActionReturn;
+        pub const CodeActionCallback = fn (_: CodeActionParameters) CodeActionReturn;
 
         pub const GoToDefinitionParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
         pub const GoToDefinitionReturn = ?types.Location;
-        const GoToDefinitionCallback = fn (_: GoToDefinitionParameters) GoToDefinitionReturn;
+        pub const GoToDefinitionCallback = fn (_: GoToDefinitionParameters) GoToDefinitionReturn;
 
         pub const GoToDeclarationParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
         pub const GoToDeclarationReturn = ?types.Location;
-        const GoToDeclarationCallback = fn (_: GoToDeclarationParameters) GoToDeclarationReturn;
+        pub const GoToDeclarationCallback = fn (_: GoToDeclarationParameters) GoToDeclarationReturn;
 
         pub const GoToTypeDefinitionParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
         pub const GoToTypeDefinitionReturn = ?types.Location;
-        const GoToTypeDefinitionCallback = fn (_: GoToTypeDefinitionParameters) GoToTypeDefinitionReturn;
+        pub const GoToTypeDefinitionCallback = fn (_: GoToTypeDefinitionParameters) GoToTypeDefinitionReturn;
 
         pub const GoToImplementationParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
         pub const GoToImplementationReturn = ?types.Location;
-        const GoToImplementationCallback = fn (_: GoToImplementationParameters) GoToImplementationReturn;
+        pub const GoToImplementationCallback = fn (_: GoToImplementationParameters) GoToImplementationReturn;
 
         pub const FindReferencesParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
         pub const FindReferencesReturn = ?[]const types.Location;
-        const FindReferencesCallback = fn (_: FindReferencesParameters) FindReferencesReturn;
+        pub const FindReferencesCallback = fn (_: FindReferencesParameters) FindReferencesReturn;
 
         pub const CompletionParameters = struct { arena: std.mem.Allocator, context: *Context, position: types.Position };
         pub const CompletionReturn = ?types.CompletionList;
-        const CompletionCallback = fn (_: CompletionParameters) CompletionReturn;
+        pub const CompletionCallback = fn (_: CompletionParameters) CompletionReturn;
 
         pub const FormattingParameters = struct { arena: std.mem.Allocator, context: *Context, options: types.FormattingOptions };
         pub const FormattingReturn = ?[]const types.TextEdit;
-        const FormattingCallback = fn (_: FormattingParameters) FormattingReturn;
+        pub const FormattingCallback = fn (_: FormattingParameters) FormattingReturn;
 
         pub const RangeFormattingParameters = struct { arena: std.mem.Allocator, context: *Context, range: types.Range, options: types.FormattingOptions };
         pub const RangeFormattingReturn = ?[]const types.TextEdit;
-        const RangeFormattingCallback = fn (_: RangeFormattingParameters) RangeFormattingReturn;
+        pub const RangeFormattingCallback = fn (_: RangeFormattingParameters) RangeFormattingReturn;
+
+        pub const ColorParameters = struct { arena: std.mem.Allocator, context: *Context };
+        pub const ColorReturn = []const types.ColorInformation;
+        pub const ColorCallback = fn (_: ColorParameters) ColorReturn;
 
         setup_function: ?*const SetupFunction = null,
 
@@ -126,6 +130,8 @@ pub fn Lsp(comptime settings: LspSettings) type {
 
         callback_formatting: ?*const FormattingCallback = null,
         callback_range_formatting: ?*const RangeFormattingCallback = null,
+
+        callback_color: ?*const ColorCallback = null,
 
         contexts: std.StringHashMap(Context),
         server_data: types.ServerData,
@@ -246,6 +252,12 @@ pub fn Lsp(comptime settings: LspSettings) type {
         }
         pub fn registerRangeFormattingCallback(self: *Self, callback: *const RangeFormattingCallback) void {
             self.callback_range_formatting = callback;
+            self.server_data.capabilities.colorProvider = true;
+            std.log.debug("Registered document color callback", .{});
+        }
+
+        pub fn registerColorCallback(self: *Self, callback: *const ColorCallback) void {
+            self.callback_color = callback;
             self.server_data.capabilities.documentRangeFormattingProvider = true;
             std.log.debug("Registered range formatting callback", .{});
         }
@@ -429,6 +441,15 @@ pub fn Lsp(comptime settings: LspSettings) type {
                             types.Response.Formatting{ .id = request.id, .result = items }
                         else
                             types.Response.Formatting{ .id = request.id };
+                        try self.writeResponse(allocator, response);
+                    }
+                },
+                rpc.MethodType.@"textDocument/documentColor" => |request| {
+                    if (self.callback_color) |callback| {
+                        const params = request.params;
+                        const context = self.contexts.getPtr(params.textDocument.uri).?;
+                        const items = callback(.{ .arena = allocator, .context = context });
+                        const response = types.Response.Color{ .id = request.id, .result = items };
                         try self.writeResponse(allocator, response);
                     }
                 },
