@@ -143,6 +143,7 @@ pub const Document = struct {
     /// Get the word containing pos, a word is anything surrounded by the characters in delimiter.
     pub fn getWord(self: Document, pos: types.Position, delimiter: []const u8) ?[]const u8 {
         const idx = self.posToIdx(pos) orelse return null;
+        if (std.mem.indexOfScalar(u8, delimiter, self.text[idx]) != null) return null;
         const start = if (std.mem.lastIndexOfAny(u8, self.text[0..idx], delimiter)) |i| i + 1 else 0;
         const end = std.mem.indexOfAnyPos(u8, self.text, idx, delimiter) orelse self.text.len;
         return self.text[start..end];
@@ -417,6 +418,7 @@ test "getWord" {
     try std.testing.expectEqualStrings("hello", doc.getWord(.{ .line = 0, .character = 2 }, " \n\t").?);
     try std.testing.expectEqualStrings("world", doc.getWord(.{ .line = 0, .character = 7 }, " \n\t").?);
     try std.testing.expectEqualStrings("zig", doc.getWord(.{ .line = 0, .character = 13 }, " \n\t").?);
+    try std.testing.expectEqual(null, doc.getWord(.{ .line = 0, .character = 5 }, " \n\t"));
     try std.testing.expectEqual(null, doc.getWord(.{ .line = 5, .character = 0 }, " \n\t"));
 }
 
