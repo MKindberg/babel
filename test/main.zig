@@ -45,6 +45,7 @@ fn setup(p: Lsp.SetupParameters) void {
     p.server.registerGoToTypeDefinitionCallback(handleGoToTypeDefinition);
     p.server.registerGoToImplementationCallback(handleGoToImplementation);
     p.server.registerFindReferencesCallback(handleFindReferences);
+    p.server.registerFormattingCallback(handleFormat);
 }
 
 fn handleOpenDoc(p: Lsp.OpenDocumentParameters) void {
@@ -90,6 +91,10 @@ fn handleFindReferences(p: Lsp.FindReferencesParameters) ?[]lsp.types.Location {
     _ = p.context.state.?.write("Find references\n") catch unreachable;
     return null;
 }
+fn handleFormat(p: Lsp.FormattingParameters) Lsp.FormattingReturn {
+    _ = p.context.state.?.write("Formatting\n") catch unreachable;
+    return null;
+}
 
 test "Run nvim" {
     const nvim_config =
@@ -108,6 +113,7 @@ test "Run nvim" {
         \\vim.lsp.buf.hover()
         \\vim.cmd(":norm itext")
         \\vim.lsp.buf.code_action()
+        \\vim.lsp.buf.format()
         \\vim.lsp.buf.definition()
         \\vim.lsp.buf.declaration()
         \\vim.lsp.buf.type_definition()
@@ -143,6 +149,7 @@ test "Run nvim" {
         \\Hover
         \\Changed document
         \\Code action
+        \\Formatting
         \\Go to definition
         \\Go to declaration
         \\Go to type definition
