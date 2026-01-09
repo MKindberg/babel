@@ -542,6 +542,7 @@ pub const MessageIterator = struct {
     input_stream: *std.Io.Reader,
     header_buf: std.Io.Writer.Allocating,
     body_buf: std.Io.Writer.Allocating,
+    arena: ?std.heap.ArenaAllocator = null,
 
     pub fn init(allocator: std.mem.Allocator, input_stream: *std.Io.Reader) Self {
         const header = std.Io.Writer.Allocating.init(allocator);
@@ -577,13 +578,13 @@ pub const MessageIterator = struct {
         try self.input_stream.streamExact(&self.body_buf.writer, content_len);
         defer self.body_buf.clearRetainingCapacity();
 
-        var arena = std.heap.ArenaAllocator.init(allocator);
+        self.arena = std.heap.ArenaAllocator.init(allocator);
 
-        const decoded = rpc.decodeMessage(arena.allocator(), self.body_buf.written()) catch |e| {
+        const decoded = rpc.decodeMessage(self.arena.?.allocator(), self.body_buf.written()) catch |e| {
             std.log.warn("Failed to decode message: {any}\n", .{e});
             return Error.DecodeFailure;
         };
-        return .{ .decoded = decoded, .arena = &arena };
+        return .{ .decoded = decoded, .arena = &self.arena.? };
     }
 };
 
