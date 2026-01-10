@@ -33,7 +33,7 @@ pub const Document = struct {
         if (size < 64 * 1024) return size * 2;
         if (size < 512 * 1024) return size + size / 2;
         if (size < 1024 * 1024) return size + size / 4;
-        return 64 * 1024;
+        return size + 256 * 1024;
     }
 
     fn updateFull(self: *Document, text: []const u8) !void {
