@@ -519,15 +519,6 @@ pub fn Lsp(comptime settings: LspSettings) type {
             const entry = self.contexts.fetchRemove(name);
             entry.?.value.document.deinit();
         }
-
-        fn updateDocument(self: *Self, name: []const u8, text: []const u8, range: ?types.Range) !void {
-            var context = self.contexts.getPtr(name).?;
-            if (range) |r| {
-                try context.document.update(text, r);
-            } else {
-                try context.document.updateFull(text);
-            }
-        }
     };
 }
 
