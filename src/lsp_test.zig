@@ -39,11 +39,11 @@ fn closeDoc(writer: *std.Io.Writer, uri: []const u8) !void {
 
 fn changeDoc(writer: *std.Io.Writer, uri: []const u8, text: []const u8) !void {
     const changes = [_]types.ChangeEvent{.{ .text = text, .range = .{ .start = .{ .line = 0, .character = 0 }, .end = .{ .line = 0, .character = 0 } } }};
-    const close_doc = types.Notification.DidChangeTextDocument{ .params = .{
+    const change_doc = types.Notification.DidChangeTextDocument{ .params = .{
         .textDocument = .{ .uri = uri, .version = 0 },
         .contentChanges = &changes,
     } };
-    try queueMessage(writer, close_doc);
+    try queueMessage(writer, change_doc);
 }
 
 fn formatDoc(writer: *std.Io.Writer, uri: []const u8) !void {
