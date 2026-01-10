@@ -53,7 +53,7 @@ pub fn traceVerbose(comptime format: []const u8, args: anytype, comptime verbose
     var buf: [1024]u8 = undefined;
     var buf_verbose: [1024]u8 = undefined;
     const message = std.fmt.bufPrint(&buf, format, args) catch return;
-    const verbose = if (trace.value == .Verbose) std.fmt.bufPrint(&buf_verbose, verbose_format, verbose_args) catch null else null;
+    const verbose = if (trace_value == .Verbose) std.fmt.bufPrint(&buf_verbose, verbose_format, verbose_args) catch null else null;
     var buffer: [256]u8 = undefined;
     var stdout = std.fs.File.stdout().writer(&buffer).interface;
     writeResponseNoCheck(std.heap.page_allocator, &stdout, types.Notification.Trace{ .params = .{
