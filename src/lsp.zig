@@ -252,14 +252,14 @@ pub fn Lsp(comptime settings: LspSettings) type {
         }
         pub fn registerRangeFormattingCallback(self: *Self, callback: *const RangeFormattingCallback) void {
             self.callback_range_formatting = callback;
-            self.server_data.capabilities.colorProvider = true;
-            std.log.debug("Registered document color callback", .{});
+            self.server_data.capabilities.documentRangeFormattingProvider = true;
+            std.log.debug("Registered range formatting callback", .{});
         }
 
         pub fn registerColorCallback(self: *Self, callback: *const ColorCallback) void {
             self.callback_color = callback;
-            self.server_data.capabilities.documentRangeFormattingProvider = true;
-            std.log.debug("Registered range formatting callback", .{});
+            self.server_data.capabilities.colorProvider = true;
+            std.log.debug("Registered document color callback", .{});
         }
 
         pub fn start(self: *Self, setup_function: ?*const SetupFunction) !u8 {
