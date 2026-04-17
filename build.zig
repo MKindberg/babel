@@ -109,7 +109,7 @@ fn buildCovTest(
         .use_llvm = true,
     });
 
-    cov_test.setExecCmd(&[_]?[]const u8{ "kcov","--clean", "--include-pattern=src", "cov", null });
+    cov_test.setExecCmd(&[_]?[]const u8{ "kcov", "--clean", "--include-pattern=src", "cov", null });
     const run_cov_test = b.addRunArtifact(cov_test);
     run_cov_test.has_side_effects = true;
     step.dependOn(&run_cov_test.step);

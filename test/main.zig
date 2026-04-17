@@ -2,7 +2,7 @@ const std = @import("std");
 const lsp = @import("lsp");
 
 const Lsp = lsp.Lsp(.{
-    .state_type = std.fs.File,
+    .state_type = std.Io.File,
 });
 
 const builtin = @import("builtin");
@@ -12,9 +12,11 @@ pub const std_options = std.Options{
     .logFn = lsp.log,
 };
 
-pub fn main() !u8 {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
+var global_io: std.Io = undefined;
+
+pub fn main(init: std.process.Init) !u8 {
+    const allocator = init.gpa;
+    global_io = init.io;
 
     const server_info = lsp.types.ServerInfo{
         .name = "tester",
@@ -23,8 +25,8 @@ pub fn main() !u8 {
 
     var out_buffer: [512]u8 = undefined;
     var in_buffer: [512]u8 = undefined;
-    var stdin = std.fs.File.stdin().reader(&in_buffer);
-    var stdout = std.fs.File.stdout().writer(&out_buffer);
+    var stdin = std.Io.File.stdin().reader(std.Options.debug_io, &in_buffer);
+    var stdout = std.Io.File.stdout().writer(std.Options.debug_io, &out_buffer);
 
     var server = Lsp.init(allocator, &stdin.interface, &stdout.interface, server_info);
     defer server.deinit();
@@ -49,54 +51,55 @@ fn setup(p: Lsp.SetupParameters) void {
 }
 
 fn handleOpenDoc(p: Lsp.OpenDocumentParameters) void {
-    const file = std.fs.cwd().createFile("output.txt", .{ .truncate = true }) catch unreachable;
+    const file = std.Io.Dir.cwd().createFile(global_io, "output.txt", .{ .truncate = true }) catch unreachable;
     p.context.state = file;
-    _ = p.context.state.?.write("Opened document\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(global_io, "Opened document\n") catch unreachable;
 }
 fn handleCloseDoc(p: Lsp.CloseDocumentParameters) void {
-    _ = p.context.state.?.write("Closed document\n") catch unreachable;
-    p.context.state.?.close();
+    _ = p.context.state.?.writeStreamingAll(global_io, "Closed document\n") catch unreachable;
+    p.context.state.?.close(global_io);
 }
 fn handleChangeDoc(p: Lsp.ChangeDocumentParameters) void {
-    _ = p.context.state.?.write("Changed document\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(global_io, "Changed document\n") catch unreachable;
 }
 fn handleSaveDoc(p: Lsp.SaveDocumentParameters) void {
-    _ = p.context.state.?.write("Saved document\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(global_io, "Saved document\n") catch unreachable;
 }
 fn handleHover(p: Lsp.HoverParameters) ?[]const u8 {
-    _ = p.context.state.?.write("Hover\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(global_io, "Hover\n") catch unreachable;
     return null;
 }
 fn handleCodeAction(p: Lsp.CodeActionParameters) ?[]const lsp.types.Response.CodeAction.Result {
-    _ = p.context.state.?.write("Code action\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(global_io, "Code action\n") catch unreachable;
     return null;
 }
 fn handleGoToDeclaration(p: Lsp.GoToDeclarationParameters) ?lsp.types.Location {
-    _ = p.context.state.?.write("Go to declaration\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(global_io, "Go to declaration\n") catch unreachable;
     return null;
 }
 fn handleGotoDefinition(p: Lsp.GoToDefinitionParameters) ?lsp.types.Location {
-    _ = p.context.state.?.write("Go to definition\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(global_io, "Go to definition\n") catch unreachable;
     return null;
 }
 fn handleGoToTypeDefinition(p: Lsp.GoToTypeDefinitionParameters) ?lsp.types.Location {
-    _ = p.context.state.?.write("Go to type definition\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(global_io, "Go to type definition\n") catch unreachable;
     return null;
 }
 fn handleGoToImplementation(p: Lsp.GoToImplementationParameters) ?lsp.types.Location {
-    _ = p.context.state.?.write("Go to implementation\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(global_io, "Go to implementation\n") catch unreachable;
     return null;
 }
 fn handleFindReferences(p: Lsp.FindReferencesParameters) ?[]lsp.types.Location {
-    _ = p.context.state.?.write("Find references\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(global_io, "Find references\n") catch unreachable;
     return null;
 }
 fn handleFormat(p: Lsp.FormattingParameters) Lsp.FormattingReturn {
-    _ = p.context.state.?.write("Formatting\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(global_io, "Formatting\n") catch unreachable;
     return null;
 }
 
 test "Run nvim" {
+    const io = std.testing.io;
     const nvim_config =
         \\ vim.lsp.set_log_level("TRACE")
         \\ vim.lsp.config.tester = {
@@ -105,8 +108,8 @@ test "Run nvim" {
         \\ }
         \\ vim.lsp.enable("tester")
     ;
-    std.fs.cwd().writeFile(.{ .sub_path = "nvim_config.lua", .data = nvim_config }) catch unreachable;
-    defer std.fs.cwd().deleteFile("nvim_config.lua") catch {};
+    std.Io.Dir.cwd().writeFile(io, .{ .sub_path = "nvim_config.lua", .data = nvim_config }) catch unreachable;
+    defer std.Io.Dir.cwd().deleteFile(io, "nvim_config.lua") catch {};
 
     const commands =
         \\vim.cmd(":norm itext")
@@ -121,8 +124,8 @@ test "Run nvim" {
         \\vim.lsp.buf.references()
         \\vim.cmd(":wq")
     ;
-    std.fs.cwd().writeFile(.{ .sub_path = "commands.lua", .data = commands }) catch unreachable;
-    defer std.fs.cwd().deleteFile("commands.lua") catch {};
+    std.Io.Dir.cwd().writeFile(io, .{ .sub_path = "commands.lua", .data = commands }) catch unreachable;
+    defer std.Io.Dir.cwd().deleteFile(io, "commands.lua") catch {};
     const argv = [_][]const u8{
         "nvim",
         "--headless",
@@ -134,14 +137,13 @@ test "Run nvim" {
         "-l",
         "commands.lua",
     };
-    var child = std.process.Child.init(&argv, std.testing.allocator);
+    var nvim_handle = try std.process.spawn(io, .{ .argv = &argv, .stdout = .ignore, .stderr = .ignore });
 
-    try child.spawn();
-    const term = try child.wait();
-    defer std.fs.cwd().deleteFile("output.txt") catch {};
-    defer std.fs.cwd().deleteFile("test.txt") catch {};
+    const term = try nvim_handle.wait(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "output.txt") catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, "test.txt") catch {};
 
-    try std.testing.expectEqual(term.Exited, 0);
+    try std.testing.expectEqual(term.exited, 0);
 
     const expected =
         \\Opened document
@@ -158,7 +160,7 @@ test "Run nvim" {
         \\Saved document
         \\
     ;
-    const actual = try std.fs.cwd().readFileAlloc(std.testing.allocator, "output.txt", 1000000);
+    const actual = try std.Io.Dir.cwd().readFileAlloc(io, "output.txt", std.testing.allocator, std.Io.Limit.unlimited);
     defer std.testing.allocator.free(actual);
 
     try std.testing.expectEqualStrings(expected, actual);

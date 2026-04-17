@@ -31,8 +31,9 @@ pub fn log(
     var response_buf: [1024]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&response_buf);
     var buffer: [256]u8 = undefined;
-    var stdout = std.fs.File.stdout().writer(&buffer).interface;
-    writeResponseNoCheck(fba.allocator(), &stdout, notification) catch return;
+    var stderr = std.debug.lockStderr(&buffer).file_writer;
+    defer std.debug.unlockStderr();
+    writeResponseNoCheck(fba.allocator(), &stderr.interface, notification) catch return;
 }
 
 pub fn trace(comptime format: []const u8, args: anytype) void {

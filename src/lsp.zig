@@ -26,20 +26,17 @@ const MessageQueue = std.ArrayList(struct {
 });
 
 fn CreateContext(comptime settings: LspSettings) type {
-    var fields: []const std.builtin.Type.StructField = &.{
-        .{ .name = "server", .type = *Lsp(settings), .default_value_ptr = null, .is_comptime = false, .alignment = @alignOf(Lsp(settings)) },
-        .{ .name = "document", .type = Document, .default_value_ptr = null, .is_comptime = false, .alignment = @alignOf(Document) },
-    };
-    if (settings.state_type) |t| {
-        fields = fields ++ .{std.builtin.Type.StructField{ .name = "state", .type = ?t, .default_value_ptr = &@as(?t, null), .is_comptime = false, .alignment = @alignOf(?t) }};
-    }
-
-    return @Type(.{ .@"struct" = .{
-        .layout = .auto,
-        .fields = fields,
-        .decls = &.{},
-        .is_tuple = false,
-    } });
+    return if (settings.state_type) |t|
+        struct {
+            server: *Lsp(settings),
+            document: Document,
+            state: ?t = null,
+        }
+    else
+        struct {
+            server: *Lsp(settings),
+            document: Document,
+        };
 }
 
 pub var test_input_file: ?[]const u8 = null;
