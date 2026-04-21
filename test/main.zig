@@ -12,12 +12,7 @@ pub const std_options = std.Options{
     .logFn = lsp.log,
 };
 
-var global_io: std.Io = undefined;
-
 pub fn main(init: std.process.Init) !u8 {
-    const allocator = init.gpa;
-    global_io = init.io;
-
     const server_info = lsp.types.ServerInfo{
         .name = "tester",
         .version = "0.1.0",
@@ -28,7 +23,7 @@ pub fn main(init: std.process.Init) !u8 {
     var stdin = std.Io.File.stdin().reader(std.Options.debug_io, &in_buffer);
     var stdout = std.Io.File.stdout().writer(std.Options.debug_io, &out_buffer);
 
-    var server = Lsp.init(allocator, &stdin.interface, &stdout.interface, server_info);
+    var server = Lsp.init(init.gpa, init.io, &stdin.interface, &stdout.interface, server_info);
     defer server.deinit();
 
     return try server.start(setup);
@@ -51,50 +46,50 @@ fn setup(p: Lsp.SetupParameters) void {
 }
 
 fn handleOpenDoc(p: Lsp.OpenDocumentParameters) void {
-    const file = std.Io.Dir.cwd().createFile(global_io, "output.txt", .{ .truncate = true }) catch unreachable;
+    const file = std.Io.Dir.cwd().createFile(p.io, "output.txt", .{ .truncate = true }) catch unreachable;
     p.context.state = file;
-    _ = p.context.state.?.writeStreamingAll(global_io, "Opened document\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(p.io, "Opened document\n") catch unreachable;
 }
 fn handleCloseDoc(p: Lsp.CloseDocumentParameters) void {
-    _ = p.context.state.?.writeStreamingAll(global_io, "Closed document\n") catch unreachable;
-    p.context.state.?.close(global_io);
+    _ = p.context.state.?.writeStreamingAll(p.io, "Closed document\n") catch unreachable;
+    p.context.state.?.close(p.io);
 }
 fn handleChangeDoc(p: Lsp.ChangeDocumentParameters) void {
-    _ = p.context.state.?.writeStreamingAll(global_io, "Changed document\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(p.io, "Changed document\n") catch unreachable;
 }
 fn handleSaveDoc(p: Lsp.SaveDocumentParameters) void {
-    _ = p.context.state.?.writeStreamingAll(global_io, "Saved document\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(p.io, "Saved document\n") catch unreachable;
 }
 fn handleHover(p: Lsp.HoverParameters) ?[]const u8 {
-    _ = p.context.state.?.writeStreamingAll(global_io, "Hover\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(p.io, "Hover\n") catch unreachable;
     return null;
 }
 fn handleCodeAction(p: Lsp.CodeActionParameters) ?[]const lsp.types.Response.CodeAction.Result {
-    _ = p.context.state.?.writeStreamingAll(global_io, "Code action\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(p.io, "Code action\n") catch unreachable;
     return null;
 }
 fn handleGoToDeclaration(p: Lsp.GoToDeclarationParameters) ?lsp.types.Location {
-    _ = p.context.state.?.writeStreamingAll(global_io, "Go to declaration\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(p.io, "Go to declaration\n") catch unreachable;
     return null;
 }
 fn handleGotoDefinition(p: Lsp.GoToDefinitionParameters) ?lsp.types.Location {
-    _ = p.context.state.?.writeStreamingAll(global_io, "Go to definition\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(p.io, "Go to definition\n") catch unreachable;
     return null;
 }
 fn handleGoToTypeDefinition(p: Lsp.GoToTypeDefinitionParameters) ?lsp.types.Location {
-    _ = p.context.state.?.writeStreamingAll(global_io, "Go to type definition\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(p.io, "Go to type definition\n") catch unreachable;
     return null;
 }
 fn handleGoToImplementation(p: Lsp.GoToImplementationParameters) ?lsp.types.Location {
-    _ = p.context.state.?.writeStreamingAll(global_io, "Go to implementation\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(p.io, "Go to implementation\n") catch unreachable;
     return null;
 }
 fn handleFindReferences(p: Lsp.FindReferencesParameters) ?[]lsp.types.Location {
-    _ = p.context.state.?.writeStreamingAll(global_io, "Find references\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(p.io, "Find references\n") catch unreachable;
     return null;
 }
 fn handleFormat(p: Lsp.FormattingParameters) Lsp.FormattingReturn {
-    _ = p.context.state.?.writeStreamingAll(global_io, "Formatting\n") catch unreachable;
+    _ = p.context.state.?.writeStreamingAll(p.io, "Formatting\n") catch unreachable;
     return null;
 }
 

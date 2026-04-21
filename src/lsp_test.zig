@@ -65,7 +65,7 @@ test "init-shutdown" {
     var reader = std.Io.Reader.fixed(input_writer.written());
     var writer = std.Io.Writer.Discarding.init(&.{}).writer;
 
-    var server = Lsp(.{}).init(std.testing.allocator, &reader, &writer, .{ .name = "testing" });
+    var server = Lsp(.{}).init(std.testing.allocator, std.testing.io, &reader, &writer, .{ .name = "testing" });
     defer server.deinit();
     const res = try server.start(null);
 
@@ -91,7 +91,7 @@ test "formatting" {
     var reader = std.Io.Reader.fixed(input_writer.written());
     var writer = std.Io.Writer.Discarding.init(&.{}).writer;
 
-    var server = Lsp(.{}).init(std.testing.allocator, &reader, &writer, .{ .name = "testing" });
+    var server = Lsp(.{}).init(std.testing.allocator, std.testing.io, &reader, &writer, .{ .name = "testing" });
     server.registerFormattingCallback(formatCallback);
     defer server.deinit();
     const res = try server.start(null);
