@@ -94,6 +94,10 @@ pub fn Lsp(comptime settings: LspSettings) type {
         pub const ColorReturn = []const types.ColorInformation;
         pub const ColorCallback = fn (_: ColorParameters) ColorReturn;
 
+        pub const CodeLensParameters = struct { allocator: std.mem.Allocator, io: std.Io, context: *Context };
+        pub const CodeLensReturn = ?[]const types.CodeLensData;
+        pub const CodeLensCallback = fn (_: CodeLensParameters) CodeLensReturn;
+
         setup_function: ?*const SetupFunction = null,
 
         callback_doc_open: ?*const OpenDocumentCallback = null,
@@ -115,6 +119,8 @@ pub fn Lsp(comptime settings: LspSettings) type {
         callback_range_formatting: ?*const RangeFormattingCallback = null,
 
         callback_color: ?*const ColorCallback = null,
+
+        callback_code_lens: ?*const CodeLensCallback = null,
 
         contexts: std.StringHashMap(Context),
         server_data: types.ServerData,
@@ -193,6 +199,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
             Formatting: FormattingCallback,
             RangeFormatting: RangeFormattingCallback,
             Color: ColorCallback,
+            CodeLens: CodeLensCallback,
         };
         pub fn registerCallback(self: *Self, callback: Callback) void {
             switch (callback) {
@@ -246,6 +253,10 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 .Color => |c| {
                     self.callback_color = c;
                     self.server_data.capabilities.colorProvider = true;
+                },
+                .CodeLens => |c| {
+                    self.callback_code_lens = c;
+                    self.server_data.capabilities.codeLensProvider = .{};
                 },
             }
             std.log.debug("Registered callback for {s}", .{@tagName(callback)});
@@ -329,6 +340,12 @@ pub fn Lsp(comptime settings: LspSettings) type {
             self.callback_color = callback;
             self.server_data.capabilities.colorProvider = true;
             std.log.debug("Registered document color callback", .{});
+        }
+
+        pub fn registerCodeLensCallback(self: *Self, callback: *const CodeLensCallback) void {
+            self.callback_code_lens = callback;
+            self.server_data.capabilities.codeLensProvider = .{};
+            std.log.debug("Registered code lens callback", .{});
         }
 
         pub fn start(self: *Self, setup_function: ?*const SetupFunction) !u8 {
@@ -527,6 +544,15 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         const response = types.Response.Color{ .id = request.id, .result = items };
                         try self.writeResponse(allocator, response);
                     } else self.replyNoCallback(allocator, request, @tagName(msg));
+                },
+                rpc.MethodType.@"textDocument/codeLens" => |request| {
+                    if (self.callback_code_lens) |callback| {
+                        const params = request.params;
+                        const context = self.contexts.getPtr(params.textDocument.uri).?;
+                        const items = callback(.{ .allocator = allocator, .io = self.io, .context = context });
+                        const response = types.Response.CodeLens{ .id = request.id, .result = items };
+                        try self.writeResponse(allocator, response);
+                    }
                 },
                 rpc.MethodType.shutdown => |request| {
                     try self.handleShutdown(allocator, request);

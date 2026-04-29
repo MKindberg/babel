@@ -18,8 +18,8 @@ pub fn main(init: std.process.Init) !u8 {
         .version = "0.1.0",
     };
 
-    var out_buffer: [512]u8 = undefined;
-    var in_buffer: [512]u8 = undefined;
+    var out_buffer: [1024]u8 = undefined;
+    var in_buffer: [1024]u8 = undefined;
     var stdin = std.Io.File.stdin().reader(std.Options.debug_io, &in_buffer);
     var stdout = std.Io.File.stdout().writer(std.Options.debug_io, &out_buffer);
 

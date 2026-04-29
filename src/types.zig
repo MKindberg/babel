@@ -544,6 +544,17 @@ pub const Request = struct {
             textDocument: TextDocumentIdentifier,
         };
     };
+
+    pub const CodeLens = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: ID,
+        method: []const u8 = "textDocument/codeLens",
+        params: Params,
+
+        pub const Params = struct {
+            textDocument: TextDocumentIdentifier,
+        };
+    };
 };
 
 pub const Response = struct {
@@ -676,6 +687,12 @@ pub const Response = struct {
         jsonrpc: []const u8 = "2.0",
         id: ID,
         result: []const ColorInformation,
+    };
+
+    pub const CodeLens = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: ID,
+        result: ?[]const CodeLensData = null,
     };
 };
 
@@ -818,6 +835,9 @@ pub const ServerData = struct {
         documentRangeFormattingProvider: bool = false,
         completionProvider: ?struct {} = .{},
         colorProvider: bool = false,
+        codeLensProvider: ?CodeLensOptions = .{},
+
+        const CodeLensOptions = struct {};
     };
 };
 
@@ -1136,4 +1156,15 @@ pub const Color = struct {
 
         return color;
     }
+};
+
+pub const CodeLensData = struct {
+    range: Range,
+    command: Command,
+};
+
+pub const Command = struct {
+    title: []const u8,
+    command: []const u8,
+    arguments: [][]const u8,
 };
