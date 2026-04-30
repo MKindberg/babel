@@ -187,6 +187,86 @@ pub fn Lsp(comptime settings: LspSettings) type {
             self.contexts.deinit();
         }
 
+        pub const Callback = union(enum) {
+            OpenDocument: OpenDocumentCallback,
+            ChangeDocument: ChangeDocumentCallback,
+            SaveDocument: SaveDocumentCallback,
+            CloseDocument: CloseDocumentCallback,
+            Hover: HoverCallback,
+            CodeAction: CodeActionCallback,
+            GoToDefinition: GoToDefinitionCallback,
+            GoToDeclaration: GoToDeclarationCallback,
+            GoToTypeDefinition: GoToTypeDefinitionCallback,
+            GoToImplementation: GoToImplementationCallback,
+            FindReferences: FindReferencesCallback,
+            Completion: CompletionCallback,
+            Formatting: FormattingCallback,
+            RangeFormatting: RangeFormattingCallback,
+            Color: ColorCallback,
+        };
+        pub fn registerCallback(self: *Self, callback: Callback) void {
+            switch (callback) {
+                .OpenDocument => |c| self.callback_doc_open = c,
+                .ChangeDocument => |c| self.callback_doc_change = c,
+                .SaveDocument => |c| {
+                    self.callback_doc_save = c;
+                    self.server_data.capabilities.textDocumentSync.save = .{ .includeText = settings.full_text_on_save };
+                },
+                .CloseDocument => |c| self.callback_doc_close = c,
+                .Hover => |c| {
+                    self.callback_hover = c;
+                    self.server_data.capabilities.hoverProvider = true;
+                },
+                .CodeAction => |c| {
+                    self.callback_codeAction = c;
+                    self.server_data.capabilities.codeActionProvider = true;
+                },
+                .GoToDefinition => |c| {
+                    self.callback_goto_definition = c;
+                    self.server_data.capabilities.definitionProvider = true;
+                },
+                .GoToDeclaration => |c| {
+                    self.callback_goto_declaration = c;
+                    self.server_data.capabilities.declarationProvider = true;
+                },
+                .GoToTypeDefinition => |c| {
+                    self.callback_goto_type_definition = c;
+                    self.server_data.capabilities.typeDefinitionProvider = true;
+                },
+                .GoToImplementation => |c| {
+                    self.callback_goto_implementation = c;
+                    self.server_data.capabilities.implementationProvider = true;
+                },
+                .FindReferences => |c| {
+                    self.callback_find_references = c;
+                    self.server_data.capabilities.referencesProvider = true;
+                },
+                .Completion => |c| {
+                    self.callback_completion = c;
+                    self.server_data.capabilities.completionProvider = .{};
+                },
+                .Formatting => |c| {
+                    self.callback_formatting = c;
+                    self.server_data.capabilities.documentFormattingProvider = true;
+                },
+                .RangeFormatting => |c| {
+                    self.callback_range_formatting = c;
+                    self.server_data.capabilities.documentRangeFormattingProvider = true;
+                },
+                .Color => |c| {
+                    self.callback_color = c;
+                    self.server_data.capabilities.colorProvider = true;
+                },
+            }
+            std.log.debug("Registered callback for {s}", .{@tagName(callback)});
+        }
+
+        pub fn registerCallbacks(self: *Self, callbacks: []const Callback) void {
+            for (callbacks) |c| {
+                self.registerCallback(c);
+            }
+        }
+
         pub fn registerDocOpenCallback(self: *Self, callback: *const OpenDocumentCallback) void {
             self.callback_doc_open = callback;
             std.log.debug("Registered open doc callback", .{});

@@ -30,19 +30,19 @@ pub fn main(init: std.process.Init) !u8 {
 }
 
 fn setup(p: Lsp.SetupParameters) void {
-    p.server.registerDocOpenCallback(handleOpenDoc);
-    p.server.registerDocChangeCallback(handleChangeDoc);
-    p.server.registerDocSaveCallback(handleSaveDoc);
-    p.server.registerDocCloseCallback(handleCloseDoc);
-    p.server.registerHoverCallback(handleHover);
-    p.server.registerCodeActionCallback(handleCodeAction);
+    p.server.registerCallback(.{ .OpenDocument = handleOpenDoc });
+    p.server.registerCallback(.{ .ChangeDocument = handleChangeDoc });
+    p.server.registerCallback(.{ .SaveDocument = handleSaveDoc });
+    p.server.registerCallback(.{ .CloseDocument = handleCloseDoc });
+    p.server.registerCallback(.{ .Hover = handleHover });
+    p.server.registerCallback(.{ .CodeAction = handleCodeAction });
 
-    p.server.registerGoToDeclarationCallback(handleGoToDeclaration);
-    p.server.registerGoToDefinitionCallback(handleGotoDefinition);
-    p.server.registerGoToTypeDefinitionCallback(handleGoToTypeDefinition);
-    p.server.registerGoToImplementationCallback(handleGoToImplementation);
-    p.server.registerFindReferencesCallback(handleFindReferences);
-    p.server.registerFormattingCallback(handleFormat);
+    p.server.registerCallback(.{ .GoToDeclaration = handleGoToDeclaration });
+    p.server.registerCallback(.{ .GoToDefinition = handleGotoDefinition });
+    p.server.registerCallback(.{ .GoToTypeDefinition = handleGoToTypeDefinition });
+    p.server.registerCallback(.{ .GoToImplementation = handleGoToImplementation });
+    p.server.registerCallback(.{ .FindReferences = handleFindReferences });
+    p.server.registerCallback(.{ .Formatting = handleFormat });
 }
 
 fn handleOpenDoc(p: Lsp.OpenDocumentParameters) void {
