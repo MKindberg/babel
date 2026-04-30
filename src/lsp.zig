@@ -11,7 +11,7 @@ const reader = @import("reader.zig");
 
 pub const LspSettings = struct {
     /// A modifiable optional of this type is passed to each callback in the file context.
-    state_type: ?type = null,
+    state_type: type = void,
     /// How text changes should be passed from client to server.
     document_sync: types.TextDocumentSyncKind = .Incremental,
     /// If the full text should be passed on every save, useful when document_sync = .None
@@ -24,20 +24,6 @@ const MessageQueue = std.ArrayList(struct {
     decoded: rpc.MethodType,
     arena: std.heap.ArenaAllocator,
 });
-
-fn CreateContext(comptime settings: LspSettings) type {
-    return if (settings.state_type) |t|
-        struct {
-            server: *Lsp(settings),
-            document: Document,
-            state: ?t = null,
-        }
-    else
-        struct {
-            server: *Lsp(settings),
-            document: Document,
-        };
-}
 
 pub var test_input_file: ?[]const u8 = null;
 pub var test_output_file: ?[]const u8 = null;
@@ -154,7 +140,11 @@ pub fn Lsp(comptime settings: LspSettings) type {
             }
         };
 
-        pub const Context = CreateContext(settings);
+        pub const Context = struct {
+            server: *Lsp(settings),
+            document: Document,
+            state: ?settings.state_type = null,
+        };
 
         const RunState = enum {
             Run,
@@ -349,7 +339,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
 
             var run_state = RunState.Run;
             while (try it.next(self.allocator)) |message| {
-                defer message.arena.deinit();
+                defer message.deinit();
                 run_state = try self.handleMessage(message.arena.allocator(), message.decoded);
                 if (run_state != RunState.Run) break;
             }
@@ -365,6 +355,12 @@ pub fn Lsp(comptime settings: LspSettings) type {
             try writeResponseNoCheck(allocator, self.output_stream, msg);
         }
 
+        fn replyNoCallback(self: Self, allocator: std.mem.Allocator, request: anytype, tagName: [:0]const u8) void {
+            var buf: [100]u8 = undefined;
+            const str = std.fmt.bufPrint(&buf, "No callback registered for handling {s}", .{tagName}) catch return;
+            self.replyInvalidRequest(allocator, request, types.ErrorCode.RequestFailed, str) catch return;
+        }
+
         fn handleMessage(self: *Self, allocator: std.mem.Allocator, msg: rpc.MethodType) !RunState {
             std.log.debug("Received request: {s}", .{@tagName(msg)});
 
@@ -373,12 +369,12 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     .Stopped => try self.replyInvalidRequest(allocator, msg, types.ErrorCode.ServerNotInitialized, "Server not initialized"),
                     .Initialize => try self.replyInvalidRequest(allocator, msg, types.ErrorCode.ServerNotInitialized, "Server initializing"),
                     .Shutdown => try self.replyInvalidRequest(allocator, msg, types.ErrorCode.InvalidRequest, "Server shutting down"),
-                    .Running => try self.replyInvalidRequest(allocator, msg, types.ErrorCode.ServerNotInitialized, "Server already running"),
+                    .Running => try self.replyInvalidRequest(allocator, msg, types.ErrorCode.InvalidRequest, "Server already running"),
                 }
                 return RunState.Run;
             }
 
-            switch (msg) {
+            matcher: switch (msg) {
                 rpc.MethodType.initialize => |request| {
                     if (!self.server_data.capabilities.textDocumentSync.openClose) @panic("TextDocumentSync.OpenClose must be true");
                     try self.handleInitialize(allocator, request);
@@ -420,12 +416,12 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 rpc.MethodType.@"textDocument/didClose" => |notification| {
                     const params = notification.params;
 
+                    var entry = self.contexts.fetchRemove(params.textDocument.uri) orelse break :matcher;
                     if (self.callback_doc_close) |callback| {
-                        const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        callback(.{ .allocator = allocator, .io = self.io, .context = context });
+                        var context = entry.value;
+                        callback(.{ .allocator = allocator, .io = self.io, .context = &context });
                     }
-
-                    closeDocument(self, params.textDocument.uri);
+                    entry.value.document.deinit();
                 },
                 rpc.MethodType.@"textDocument/hover" => |request| {
                     if (self.callback_hover) |callback| {
@@ -437,7 +433,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         else
                             types.Response.Hover{ .id = request.id };
                         try self.writeResponse(allocator, response);
-                    }
+                    } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
                 rpc.MethodType.@"textDocument/codeAction" => |request| {
                     if (self.callback_codeAction) |callback| {
@@ -449,27 +445,27 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         else
                             types.Response.CodeAction{ .id = request.id };
                         try self.writeResponse(allocator, response);
-                    }
+                    } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
                 rpc.MethodType.@"textDocument/declaration" => |request| {
                     if (self.callback_goto_declaration) |callback| {
                         try self.handleGoTo(allocator, request, callback);
-                    }
+                    } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
                 rpc.MethodType.@"textDocument/definition" => |request| {
                     if (self.callback_goto_definition) |callback| {
                         try self.handleGoTo(allocator, request, callback);
-                    }
+                    } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
                 rpc.MethodType.@"textDocument/typeDefinition" => |request| {
                     if (self.callback_goto_type_definition) |callback| {
                         try self.handleGoTo(allocator, request, callback);
-                    }
+                    } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
                 rpc.MethodType.@"textDocument/implementation" => |request| {
                     if (self.callback_goto_implementation) |callback| {
                         try self.handleGoTo(allocator, request, callback);
-                    }
+                    } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
                 rpc.MethodType.@"textDocument/references" => |request| {
                     if (self.callback_find_references) |callback| {
@@ -481,7 +477,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         else
                             types.Response.MultiLocationResponse{ .id = request.id };
                         try self.writeResponse(allocator, response);
-                    }
+                    } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
                 rpc.MethodType.@"$/setTrace" => |notification| {
                     logger.trace_value = notification.params.value;
@@ -499,7 +495,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         else
                             types.Response.Completion{ .id = request.id };
                         try self.writeResponse(allocator, response);
-                    }
+                    } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
                 rpc.MethodType.@"textDocument/formatting" => |request| {
                     if (self.callback_formatting) |callback| {
@@ -510,7 +506,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         else
                             types.Response.Formatting{ .id = request.id };
                         try self.writeResponse(allocator, response);
-                    }
+                    } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
                 rpc.MethodType.@"textDocument/rangeFormatting" => |request| {
                     if (self.callback_range_formatting) |callback| {
@@ -521,7 +517,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         else
                             types.Response.Formatting{ .id = request.id };
                         try self.writeResponse(allocator, response);
-                    }
+                    } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
                 rpc.MethodType.@"textDocument/documentColor" => |request| {
                     if (self.callback_color) |callback| {
@@ -530,7 +526,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         const items = callback(.{ .allocator = allocator, .io = self.io, .context = context });
                         const response = types.Response.Color{ .id = request.id, .result = items };
                         try self.writeResponse(allocator, response);
-                    }
+                    } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
                 rpc.MethodType.shutdown => |request| {
                     try self.handleShutdown(allocator, request);
@@ -593,11 +589,6 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 Context{ .document = try Document.init(self.allocator, name, language, content), .server = self };
             try self.contexts.put(context.document.uri, context);
         }
-
-        fn closeDocument(self: *Self, name: []const u8) void {
-            const entry = self.contexts.fetchRemove(name);
-            entry.?.value.document.deinit();
-        }
     };
 }
 
@@ -628,10 +619,17 @@ pub const MessageIterator = struct {
         self.header_buf.deinit();
         self.body_buf.deinit();
     }
-    pub fn next(self: *Self, allocator: std.mem.Allocator) !?struct {
+
+    pub const Message = struct {
         decoded: rpc.MethodType,
         arena: *std.heap.ArenaAllocator,
-    } {
+
+        pub fn deinit(self: Message) void {
+            self.arena.deinit();
+        }
+    };
+
+    pub fn next(self: *Self, allocator: std.mem.Allocator) !?Message {
         std.log.debug("Waiting for header", .{});
         const read = try reader.readUntilDelimiterOrEof(self.input_stream, &self.header_buf.writer, "\r\n\r\n");
         if (read == 0) return null;
