@@ -57,13 +57,13 @@ fn buildTest(
         .root_module = root_module,
     });
     tester.root_module.addImport("lsp", lsp);
-    b.installArtifact(tester);
+    const install_tester = b.addInstallArtifact(tester, .{});
 
     // Run tests
     const nvim_test = b.addTest(.{ .root_module = root_module });
     nvim_test.root_module.addImport("lsp", lsp);
     const run_test = b.addRunArtifact(nvim_test);
-    run_test.step.dependOn(&tester.step);
+    run_test.step.dependOn(&install_tester.step);
     run_test.has_side_effects = true;
 
     step.dependOn(&run_test.step);
