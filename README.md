@@ -38,10 +38,10 @@ pub fn main() !u8 {
     defer server.deinit();
 
     // Register wanted callbacks. They need to be registered before the server starts.
-    server.registerDocOpenCallback(handleOpenDoc);
-    server.registerDocCloseCallback(handleCloseDoc);
-    server.registerDocChangeCallback(handleChangeDoc);
-    server.registerHoverCallback(handleHover);
+    server.registerCallback(.{ .OpenDocument = handleOpenDoc});
+    server.registerCallback(.{ .CloseDocument = handleCloseDoc });
+    server.registerCallback(.{ .ChangeDocument = handleChangeDoc });
+    server.registerCallback(.{ .Hover = handleHover });
 
     // Start the server, it will run until it gets a shutdown signal from the client.
     const res = server.start();
