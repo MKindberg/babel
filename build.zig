@@ -1,8 +1,12 @@
 const std = @import("std");
 
+const BuildOptions = struct { target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode };
+
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+    const build_options = BuildOptions{
+        .target = b.standardTargetOptions(.{}),
+        .optimize = b.standardOptimizeOption(.{}),
+    };
 
     const build_steps = .{
         .@"test" = b.step("test", "Run nvim test"),
@@ -10,20 +14,15 @@ pub fn build(b: *std.Build) void {
         .coverage = b.step("coverage", "Run unit tests with kcov coverage"),
     };
 
-    const modules = createModules(b, .{ .target = target, .optimize = optimize });
+    const modules = createModules(b, build_options);
 
-    buildTest(b, build_steps.@"test", modules.lsp, .{ .target = target, .optimize = optimize });
-    buildUnitTest(b, build_steps.unittest, .{ .target = target, .optimize = optimize });
-    buildCovTest(b, build_steps.coverage, .{ .target = target, .optimize = optimize });
+    addOptions(b, modules.lsp, build_options);
+    buildTest(b, build_steps.@"test", modules.lsp, build_options);
+    buildUnitTest(b, build_steps.unittest, build_options);
+    buildCovTest(b, build_steps.coverage, build_options);
 }
 
-fn createModules(
-    b: *std.Build,
-    options: struct {
-        target: std.Build.ResolvedTarget,
-        optimize: std.builtin.OptimizeMode,
-    },
-) struct {
+fn createModules(b: *std.Build, options: BuildOptions) struct {
     lsp: *std.Build.Module,
 } {
     const lsp = b.addModule("lsp", .{
@@ -37,14 +36,24 @@ fn createModules(
     };
 }
 
+fn addOptions(b: *std.Build, lsp: *std.Build.Module, build_options: BuildOptions) void {
+    const use_tree_sitter = b.option(bool, "use_tree_sitter", "Add support for tree-sitter via TreeSitterDocument") orelse false;
+    const options = b.addOptions();
+    options.addOption(bool, "use_tree_sitter", use_tree_sitter);
+    lsp.addImport("build_options", options.createModule());
+
+    if (use_tree_sitter) {
+        if (b.lazyDependency("tree_sitter", build_options)) |dep| {
+            lsp.addImport("tree-sitter", dep.module("tree_sitter"));
+        }
+    }
+}
+
 fn buildTest(
     b: *std.Build,
     step: *std.Build.Step,
     lsp: *std.Build.Module,
-    options: struct {
-        target: std.Build.ResolvedTarget,
-        optimize: std.builtin.OptimizeMode,
-    },
+    options: BuildOptions,
 ) void {
     const root_module = b.createModule(.{
         .root_source_file = b.path("test/main.zig"),
@@ -69,14 +78,7 @@ fn buildTest(
     step.dependOn(&run_test.step);
 }
 
-fn buildUnitTest(
-    b: *std.Build,
-    step: *std.Build.Step,
-    options: struct {
-        target: std.Build.ResolvedTarget,
-        optimize: std.builtin.OptimizeMode,
-    },
-) void {
+fn buildUnitTest(b: *std.Build, step: *std.Build.Step, options: BuildOptions) void {
     const unit_test = b.addTest(.{
         .name = "test-unit",
         .root_module = b.createModule(.{
@@ -90,14 +92,7 @@ fn buildUnitTest(
     step.dependOn(&run_unit_test.step);
 }
 
-fn buildCovTest(
-    b: *std.Build,
-    step: *std.Build.Step,
-    options: struct {
-        target: std.Build.ResolvedTarget,
-        optimize: std.builtin.OptimizeMode,
-    },
-) void {
+fn buildCovTest(b: *std.Build, step: *std.Build.Step, options: BuildOptions) void {
     const cov_test = b.addTest(.{
         .name = "test-unit",
         .root_module = b.createModule(.{

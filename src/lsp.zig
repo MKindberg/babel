@@ -1,13 +1,16 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+const rpc = @import("rpc.zig");
+const reader = @import("reader.zig");
+const build_options = @import("build_options");
+
 pub const types = @import("types.zig");
 pub const logger = @import("logger.zig");
 pub const log = logger.log;
 pub const fileLog = logger.fileLog;
-pub const Document = @import("document.zig").Document;
-const rpc = @import("rpc.zig");
-const reader = @import("reader.zig");
+pub const BasicDocument = @import("document.zig").Document;
+pub const TreeSitterDocument = if (build_options.use_tree_sitter) @import("tree-sitter-document.zig").Document else @compileError("Must set use_tree_sitter=true to use TreeSitterDocument");
 
 pub const LspSettings = struct {
     /// A modifiable optional of this type is passed to each callback in the file context.
@@ -18,6 +21,8 @@ pub const LspSettings = struct {
     full_text_on_save: bool = false,
     /// If the document should be updated automatically before the docChange callback is triggered.
     update_doc_on_change: bool = true,
+
+    document_type: type = BasicDocument,
 };
 
 const MessageQueue = std.ArrayList(struct {
@@ -30,6 +35,8 @@ pub var test_output_file: ?[]const u8 = null;
 
 pub fn Lsp(comptime settings: LspSettings) type {
     return struct {
+        pub const Document = settings.document_type;
+
         pub const SetupParameters = struct { server: *Lsp(settings), initialize: types.Request.Initialize.Params };
         pub const SetupReturn = void;
         pub const SetupFunction = fn (_: SetupParameters) SetupReturn;
@@ -178,6 +185,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
         pub fn deinit(self: *Self) void {
             var it = self.contexts.iterator();
             while (it.next()) |i| {
+                self.allocator.free(i.key_ptr.*);
                 i.value_ptr.document.deinit();
             }
             self.contexts.deinit();
@@ -262,8 +270,8 @@ pub fn Lsp(comptime settings: LspSettings) type {
             std.log.debug("Registered callback for {s}", .{@tagName(callback)});
         }
 
-        pub fn registerCallbacks(self: *Self, callbacks: []const Callback) void {
-            for (callbacks) |c| {
+        pub fn registerCallbacks(self: *Self, comptime callbacks: []const Callback) void {
+            inline for (callbacks) |c| {
                 self.registerCallback(c);
             }
         }
@@ -535,7 +543,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
         fn openDocument(self: *Self, name: []const u8, language: []const u8, content: []const u8) !void {
             const context =
                 Context{ .document = try Document.init(self.allocator, name, language, content), .server = self };
-            try self.contexts.put(context.document.uri, context);
+            try self.contexts.put(try self.allocator.dupe(u8, name), context);
         }
     };
 }

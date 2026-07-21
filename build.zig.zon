@@ -1,13 +1,13 @@
-.{
-    .name = .babel,
-
-    .version = "0.12.2",
-
-    .paths = .{
-        "build.zig",
-        "build.zig.zon",
-        "src",
-        "integrations",
+.{ .name = .babel, .version = "0.12.2", .dependencies = .{
+        .tree_sitter = .{
+            .url = "git+https://github.com/tree-sitter/zig-tree-sitter#b562510b5563dcf3b7fcac4a5fe9d60834c84667",
+            .hash = "tree_sitter-0.26.0-8heIf-vDAQDh0HhAAUVwVZFmLrwSKMZl5gRaVFqtas0W",
+            .lazy = true,
+        },
     },
-    .fingerprint = 0xb197ee89e74388cd
-}
+.paths = .{
+    "build.zig",
+    "build.zig.zon",
+    "src",
+    "integrations",
+}, .fingerprint = 0xb197ee89e74388cd }
