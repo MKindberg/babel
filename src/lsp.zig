@@ -430,8 +430,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     logger.trace_value = notification.params.value;
                 },
                 rpc.MethodType.@"$/cancelRequest" => {
-                    // Cancel is handled earlier
-                    unreachable;
+                    // Cannot cancel since requests are not handled in parallel.
                 },
                 rpc.MethodType.@"textDocument/completion" => |request| {
                     if (self.callback_completion) |callback| {
