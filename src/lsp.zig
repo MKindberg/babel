@@ -27,6 +27,9 @@ pub const LspSettings = struct {
     update_doc_on_change: bool = true,
 
     document_type: type = BasicDocument,
+
+    /// Config options to fetch in the didChangeConfiguration callback
+    config_options: []const []const u8 = &.{},
 };
 
 pub var test_input_file: ?[]const u8 = null;
@@ -106,6 +109,18 @@ pub fn Lsp(comptime settings: LspSettings) type {
         pub const CodeLensReturn = ?[]const types.CodeLensData;
         pub const CodeLensCallback = fn (_: CodeLensParameters) CodeLensReturn;
 
+        pub const ConfigurationChangeParameters = struct { arena: *std.heap.ArenaAllocator, server: *Lsp(settings), result: []const types.LSPAny };
+        pub const ConfigurationChangeReturn = void;
+        pub const ConfigurationChangeCallback = fn (_: ConfigurationChangeParameters) ConfigurationChangeReturn;
+
+        const config_items: [settings.config_options.len]types.Request.Configuration.Item = blk: {
+            var items: [settings.config_options.len]types.Request.Configuration.Item = undefined;
+            for (settings.config_options, 0..) |section, i| {
+                items[i] = .{ .section = section };
+            }
+            break :blk items;
+        };
+
         setup_function: ?*const SetupFunction = null,
 
         callbacks: [@typeInfo(@typeInfo(Callback).@"union".tag_type.?).@"enum".fields.len]?Callback,
@@ -117,6 +132,11 @@ pub fn Lsp(comptime settings: LspSettings) type {
         output_stream: *std.Io.Writer,
 
         server_state: ServerState = .Stopped,
+        response_channel: ResponseChannel,
+        // Request IDs from server are negative to be different from the clients
+        next_request_id: i32 = -1,
+        client_supports_configuration: bool = false,
+
         const ServerState = enum {
             Stopped,
             Initialize,
@@ -159,6 +179,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 },
                 .callbacks = undefined,
                 .contexts = std.StringHashMap(Context).init(allocator),
+                .response_channel = .{ .io = io },
             };
             self.callbacks = std.mem.zeroes(@TypeOf(self.callbacks));
             return self;
@@ -171,6 +192,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 i.value_ptr.document.deinit();
             }
             self.contexts.deinit();
+            self.response_channel.deinit();
         }
 
         pub const Callback = union(@typeInfo(MethodType).@"union".tag_type.?) {
@@ -196,6 +218,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
             exit: void,
             @"$/setTrace": void,
             @"$/cancelRequest": void,
+            @"workspace/didChangeConfiguration": *const ConfigurationChangeCallback,
         };
         pub fn registerCallback(self: *Self, callback: Callback) void {
             self.callbacks[@intFromEnum(callback)] = callback;
@@ -224,15 +247,75 @@ pub fn Lsp(comptime settings: LspSettings) type {
 
             var run_state = std.atomic.Value(RunState).init(RunState.Run);
 
-            const thread_handle = try std.Thread.spawn(.{}, receiveThread, .{ self.allocator, self.input_stream, &message_queue, &run_state });
+            const thread_handle = try std.Thread.spawn(.{}, receiveThread, .{
+                self.allocator,
+                self.input_stream,
+                &message_queue,
+                &self.response_channel,
+                &run_state,
+            });
             while (run_state.load(.monotonic) == RunState.Run) {
                 var message = message_queue.pop() orelse break;
                 defer message.deinit();
-                run_state.store(try self.handleMessage(&message.arena, message.decoded), .monotonic);
+                run_state.store(try self.handleMessage(&message.arena, message.decoded.method), .monotonic);
             }
             thread_handle.join();
             if (run_state.load(.monotonic) == RunState.ShutdownOk) return 0;
             return 1;
+        }
+
+        pub const ConfigurationError = error{
+            ClientDoesNotSupportConfiguration,
+            ServerNotRunning,
+            RequestFailed,
+            InvalidResponse,
+        };
+
+        /// Fetch config options from the client. Mostly done automatically
+        /// with the workspace/didChangeConfiguration callback.
+        pub fn requestConfiguration(
+            self: *Self,
+            allocator: std.mem.Allocator,
+            items: []const types.Request.Configuration.Item,
+        ) ![]const types.LSPAny {
+            if (!self.client_supports_configuration) return ConfigurationError.ClientDoesNotSupportConfiguration;
+            if (self.server_state != .Running) return ConfigurationError.ServerNotRunning;
+
+            const id: types.ID = @enumFromInt(self.next_request_id);
+            self.next_request_id -= 1;
+
+            try writeResponseNoCheck(allocator, self.output_stream, types.Request.Configuration{
+                .id = id,
+                .params = .{ .items = items },
+            });
+
+            const message = try self.response_channel.wait(id);
+            defer message.deinit();
+
+            const response = try std.json.parseFromSliceLeaky(types.Response.Configuration, allocator, message.decoded.response.body, .{
+                .ignore_unknown_fields = true,
+                .allocate = .alloc_always,
+            });
+            if (response.@"error") |e| {
+                std.log.err("workspace/configuration failed: {s}", .{e.message});
+                return ConfigurationError.RequestFailed;
+            }
+            return response.result orelse ConfigurationError.InvalidResponse;
+        }
+
+        fn fetchConfig(self: *Self, arena: *std.heap.ArenaAllocator) void {
+            if (config_items.len == 0) return;
+            const tag: std.meta.Tag(Callback) = .@"workspace/didChangeConfiguration";
+            const callback = (self.callbacks[@intFromEnum(tag)] orelse return).@"workspace/didChangeConfiguration";
+
+            const result = self.requestConfiguration(arena.allocator(), &config_items) catch |e| {
+                switch (e) {
+                    ConfigurationError.ClientDoesNotSupportConfiguration => std.log.debug("Client does not support workspace/configuration", .{}),
+                    else => std.log.err("Failed to pull configuration: {s}", .{@errorName(e)}),
+                }
+                return;
+            };
+            callback(.{ .arena = arena, .server = self, .result = result });
         }
 
         pub fn writeResponse(self: Self, allocator: std.mem.Allocator, msg: anytype) !void {
@@ -272,6 +355,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 },
                 rpc.MethodType.initialized => {
                     self.server_state = .Running;
+                    self.fetchConfig(arena);
                 },
                 rpc.MethodType.shutdown => |request| {
                     try self.handleShutdown(allocator, request);
@@ -282,6 +366,10 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         return RunState.ShutdownOk;
                     }
                     return RunState.ShutdownErr;
+                },
+                rpc.MethodType.@"workspace/didChangeConfiguration" => {
+                    // Apparently some clients only sends null in a didChangeConfiguration
+                    self.fetchConfig(arena);
                 },
                 inline else => |message, tag| {
                     const params = message.params;
@@ -294,8 +382,10 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     if (@FieldType(Callback, @tagName(tag)) != void) {
                         if (self.callbacks[@intFromEnum(tag)]) |c| {
                             const callback = @field(c, @tagName(tag));
-                            const context = self.contexts.getPtr(params.textDocument.uri).?;
-                            const ret = callback(.{ .arena = arena, .context = context, .params = params });
+                            const ret = if (@hasField(@TypeOf(params), "textDocument")) blk: {
+                                const context = self.contexts.getPtr(params.textDocument.uri).?;
+                                break :blk callback(.{ .arena = arena, .context = context, .params = params });
+                            } else callback(.{ .arena = arena, .server = self, .params = params });
 
                             if (@hasDecl(spec_type, "response_type")) {
                                 const response: spec_type.response_type =
@@ -340,6 +430,10 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 logger.trace_value = trace;
             }
 
+            if (request.params.capabilities.workspace) |workspace| {
+                self.client_supports_configuration = workspace.configuration orelse false;
+            }
+
             if (self.setup_function) |s| {
                 s(.{ .server = self, .initialize = request.params });
             }
@@ -359,23 +453,30 @@ pub fn Lsp(comptime settings: LspSettings) type {
             allocator: std.mem.Allocator,
             input_stream: *std.Io.Reader,
             message_queue: *MessageQueue,
+            response_channel: *ResponseChannel,
             run_state: *std.atomic.Value(RunState),
         ) void {
             var it = MessageIterator.init(allocator, input_stream);
             defer it.deinit();
+            defer response_channel.close();
             while (run_state.load(.monotonic) == .Run) {
                 const message = it.next(allocator) catch |e| {
                     if (@TypeOf(e) == MessageIterator.Error) continue else unreachable;
                 };
-                if (message != null and message.?.decoded == rpc.MethodType.@"$/cancelRequest") {
-                    const id = message.?.decoded.@"$/cancelRequest".params.id;
-                    message_queue.cancel(id) catch unreachable;
-                    message.?.deinit();
-                    continue;
-                }
+                if (message) |m| switch (m.decoded) {
+                    .response => {
+                        response_channel.put(m);
+                        continue;
+                    },
+                    .method => |decoded| if (decoded == rpc.MethodType.@"$/cancelRequest") {
+                        message_queue.cancel(decoded.@"$/cancelRequest".params.id) catch unreachable;
+                        m.deinit();
+                        continue;
+                    },
+                };
 
                 message_queue.push(message) catch unreachable;
-                if (message == null or message.?.decoded == rpc.MethodType.exit) break;
+                if (message == null or message.?.decoded.method == rpc.MethodType.exit) break;
             }
         }
     };
@@ -409,7 +510,7 @@ pub const MessageIterator = struct {
     }
 
     pub const Message = struct {
-        decoded: rpc.MethodType,
+        decoded: rpc.ClientMessage,
         arena: std.heap.ArenaAllocator,
 
         pub fn deinit(self: Message) void {
@@ -444,14 +545,76 @@ pub const MessageIterator = struct {
     }
 };
 
-fn messageId(decoded: rpc.MethodType) ?types.ID {
+fn messageId(decoded: rpc.ClientMessage) ?types.ID {
     switch (decoded) {
-        inline else => |payload| {
-            if (@hasField(@TypeOf(payload), "id")) return payload.id;
-            return null;
+        .response => |response| return response.id,
+        .method => |method_type| switch (method_type) {
+            inline else => |payload| {
+                if (@hasField(@TypeOf(payload), "id")) return payload.id;
+                return null;
+            },
         },
     }
 }
+
+const ResponseChannel = struct {
+    message: ?MessageIterator.Message = null,
+    closed: bool = false,
+    mutex: std.Io.Mutex = .init,
+    semaphore: std.Io.Semaphore = .{},
+    io: std.Io,
+
+    const Self = @This();
+
+    pub const Error = error{StreamClosed};
+
+    fn deinit(self: *Self) void {
+        if (self.message) |message| message.deinit();
+        self.message = null;
+    }
+
+    fn put(self: *Self, message: MessageIterator.Message) void {
+        {
+            self.mutex.lock(self.io) catch unreachable;
+            defer self.mutex.unlock(self.io);
+            if (self.message) |stale| {
+                std.log.warn("Discarding unclaimed response", .{});
+                stale.deinit();
+            }
+            self.message = message;
+        }
+        self.semaphore.post(self.io);
+    }
+
+    fn close(self: *Self) void {
+        {
+            self.mutex.lock(self.io) catch unreachable;
+            defer self.mutex.unlock(self.io);
+            self.closed = true;
+        }
+        self.semaphore.post(self.io);
+    }
+
+    fn wait(self: *Self, id: types.ID) Error!MessageIterator.Message {
+        while (true) {
+            self.semaphore.wait(self.io) catch unreachable;
+
+            self.mutex.lock(self.io) catch unreachable;
+            const message = self.message;
+            self.message = null;
+            const closed = self.closed;
+            self.mutex.unlock(self.io);
+
+            if (message) |m| {
+                if (m.decoded.response.id == id) return m;
+                std.log.warn("Discarding response to unknown request {d}", .{@intFromEnum(m.decoded.response.id)});
+                m.deinit();
+                continue;
+            }
+            if (closed) return Error.StreamClosed;
+        }
+    }
+};
 
 const MessageQueue = struct {
     queue: std.ArrayList(?MessageIterator.Message) = .empty,

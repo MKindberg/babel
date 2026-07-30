@@ -129,6 +129,7 @@ pub fn MethodSpecs(Lsp: type, settings: LspSettings) type {
                     }
                 },
                 .@"$/cancelRequest" => struct {},
+                .@"workspace/didChangeConfiguration" => struct {},
             };
         field_attrs[i] = .{ .default_value_ptr = &field_types[i]{} };
     }

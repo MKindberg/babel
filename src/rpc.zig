@@ -15,7 +15,7 @@ pub fn encodeMessage(allocator: std.mem.Allocator, msg: anytype) ![]u8 {
 }
 
 const BaseMessage = struct {
-    method: []const u8,
+    method: ?[]const u8 = null,
 };
 
 pub const MethodType = CreateMethodType();
@@ -70,27 +70,45 @@ const DecodeError = error{
     UnknownMethod,
 };
 
-const DecodedMessage = struct {
+pub const ClientMessage = union(enum) {
     method: MethodType,
+    response: Response,
+
+    pub const Response = struct {
+        id: types.ID,
+        body: []const u8,
+    };
 };
 
-pub fn decodeMessage(allocator: std.mem.Allocator, msg: []const u8) !MethodType {
+pub fn decodeMessage(allocator: std.mem.Allocator, msg: []const u8) !ClientMessage {
     const parsed = try std.json.parseFromSlice(BaseMessage, allocator, msg, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
-    std.log.debug("Decoded {s}", .{parsed.value.method});
+
+    const msg_method = parsed.value.method orelse {
+        const header = std.json.parseFromSliceLeaky(struct { id: types.ID }, allocator, msg, .{ .ignore_unknown_fields = true }) catch {
+            std.log.warn("Message has neither a method nor an id", .{});
+            return DecodeError.InvalidMessage;
+        };
+        std.log.debug("Decoded response to request {d}", .{@intFromEnum(header.id)});
+        return .{ .response = .{ .id = header.id, .body = try allocator.dupe(u8, msg) } };
+    };
+
+    std.log.debug("Decoded {s}", .{msg_method});
     inline for (@typeInfo(MethodType).@"union".fields) |field| {
-        if (std.mem.eql(u8, parsed.value.method, field.name)) {
-            return @unionInit(
-                MethodType,
-                field.name,
-                try std.json.parseFromSliceLeaky(field.type, allocator, msg, .{
-                    .ignore_unknown_fields = true,
-                    .allocate = .alloc_always, // Otherwise some fields might go out of scope when the message is freed.
-                }),
-            );
+        if (std.mem.eql(u8, msg_method, field.name)) {
+            return .{
+                .method = @unionInit(
+                    MethodType,
+                    field.name,
+                    try std.json.parseFromSliceLeaky(field.type, allocator, msg, .{
+                        .ignore_unknown_fields = true,
+                        .allocate = .alloc_always, // Otherwise some fields might go out of scope when the message is freed.
+                    }),
+                ),
+            };
         }
     }
-    std.log.warn("Unknown method: {s}", .{parsed.value.method});
+    std.log.warn("Unknown method: {s}", .{msg_method});
     return DecodeError.UnknownMethod;
 }
 
@@ -111,5 +129,14 @@ test "decodeMessage" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const message = try decodeMessage(arena.allocator(), msg[0..]);
-    try std.testing.expectEqualStrings(@tagName(message), "initialize");
+    try std.testing.expectEqualStrings(@tagName(message.method), "initialize");
+}
+
+test "decodeMessage response" {
+    const msg = "{\"jsonrpc\":\"2.0\",\"id\":37,\"result\":[{\"foo\":true}]}";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const message = try decodeMessage(arena.allocator(), msg[0..]);
+    try std.testing.expectEqual(@as(types.ID, @enumFromInt(37)), message.response.id);
+    try std.testing.expectEqualStrings(msg, message.response.body);
 }

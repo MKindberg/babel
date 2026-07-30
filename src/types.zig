@@ -34,7 +34,12 @@ pub const Request = struct {
                 version: ?[]u8 = null,
             };
 
-            const WorkspaceClientCapabilities = struct {};
+            const WorkspaceClientCapabilities = struct {
+                configuration: ?bool = null,
+                didChangeConfiguration: ?DidChangeConfigurationClientCapabilities = null,
+
+                const DidChangeConfigurationClientCapabilities = struct {};
+            };
             const WindowClientCapabilities = struct {};
             const GeneralClientCapabilities = struct {};
 
@@ -555,6 +560,21 @@ pub const Request = struct {
             textDocument: TextDocumentIdentifier,
         };
     };
+
+    pub const Configuration = struct {
+        pub const outgoing: bool = true;
+        jsonrpc: []const u8 = "2.0",
+        id: ID,
+        method: []const u8 = "workspace/configuration",
+        params: Params,
+        pub const Params = struct {
+            items: []const Item,
+        };
+        pub const Item = struct {
+            scopeUri: ?[]const u8 = null,
+            section: ?[]const u8 = null,
+        };
+    };
 };
 
 pub const Response = struct {
@@ -686,6 +706,13 @@ pub const Response = struct {
         id: ID,
         result: ?[]const CodeLensData = null,
     };
+
+    pub const Configuration = struct {
+        jsonrpc: []const u8 = "2.0",
+        id: ID,
+        result: ?[]const LSPAny = null,
+        @"error": ?ErrorData = null,
+    };
 };
 
 pub const Notification = struct {
@@ -795,6 +822,15 @@ pub const Notification = struct {
         params: Params,
         pub const Params = struct {
             id: ID,
+        };
+    };
+
+    pub const DidChangeConfiguration = struct {
+        jsonrpc: []const u8 = "2.0",
+        method: []const u8 = "workspace/didChangeConfiguration",
+        params: Params,
+        pub const Params = struct {
+            settings: LSPAny,
         };
     };
 };
@@ -1160,3 +1196,5 @@ pub const Command = struct {
     command: []const u8,
     arguments: [][]const u8,
 };
+
+pub const LSPAny = std.json.Value;
