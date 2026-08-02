@@ -25,11 +25,6 @@ pub const LspSettings = struct {
     document_type: type = BasicDocument,
 };
 
-const MessageQueue = std.ArrayList(struct {
-    decoded: rpc.MethodType,
-    arena: std.heap.ArenaAllocator,
-});
-
 pub var test_input_file: ?[]const u8 = null;
 pub var test_output_file: ?[]const u8 = null;
 
@@ -159,7 +154,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
             state: ?settings.state_type = null,
         };
 
-        const RunState = enum {
+        const RunState = enum(u8) {
             Run,
             ShutdownOk,
             ShutdownErr,
@@ -277,18 +272,21 @@ pub fn Lsp(comptime settings: LspSettings) type {
         }
 
         pub fn start(self: *Self, setup_function: ?*const SetupFunction) !u8 {
-            var it = MessageIterator.init(self.allocator, self.input_stream);
-            defer it.deinit();
-
             self.setup_function = setup_function;
 
-            var run_state = RunState.Run;
-            while (try it.next(self.allocator)) |message| {
+            var message_queue = MessageQueue.init(self.allocator, self.io);
+            defer message_queue.deinit();
+
+            var run_state = std.atomic.Value(RunState).init(RunState.Run);
+
+            const thread_handle = try std.Thread.spawn(.{}, receiveThread, .{ self.allocator, self.input_stream, &message_queue, &run_state });
+            while (run_state.load(.monotonic) == RunState.Run) {
+                var message = message_queue.pop() orelse break;
                 defer message.deinit();
-                run_state = try self.handleMessage(message.arena, message.decoded);
-                if (run_state != RunState.Run) break;
+                run_state.store(try self.handleMessage(&message.arena, message.decoded), .monotonic);
             }
-            if (run_state == RunState.ShutdownOk) return 0;
+            thread_handle.join();
+            if (run_state.load(.monotonic) == RunState.ShutdownOk) return 0;
             return 1;
         }
 
@@ -544,6 +542,23 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 Context{ .document = try Document.init(self.allocator, name, language, content), .server = self };
             try self.contexts.put(try self.allocator.dupe(u8, name), context);
         }
+
+        fn receiveThread(
+            allocator: std.mem.Allocator,
+            input_stream: *std.Io.Reader,
+            message_queue: *MessageQueue,
+            run_state: *std.atomic.Value(RunState),
+        ) void {
+            var it = MessageIterator.init(allocator, input_stream);
+            defer it.deinit();
+            while (run_state.load(.monotonic) == .Run) {
+                const message = it.next(allocator) catch |e| {
+                    if (@TypeOf(e) == MessageIterator.Error) continue else unreachable;
+                };
+                message_queue.push(message) catch unreachable;
+                if (message == null or message.?.decoded == rpc.MethodType.exit) break;
+            }
+        }
     };
 }
 
@@ -576,7 +591,7 @@ pub const MessageIterator = struct {
 
     pub const Message = struct {
         decoded: rpc.MethodType,
-        arena: *std.heap.ArenaAllocator,
+        arena: std.heap.ArenaAllocator,
 
         pub fn deinit(self: Message) void {
             self.arena.deinit();
@@ -605,7 +620,40 @@ pub const MessageIterator = struct {
             std.log.warn("Failed to decode message: {any}\n", .{e});
             return Error.DecodeFailure;
         };
-        return .{ .decoded = decoded, .arena = &arena };
+        return .{ .decoded = decoded, .arena = arena };
+    }
+};
+
+const MessageQueue = struct {
+    queue: std.ArrayList(?MessageIterator.Message) = .empty,
+    mutex: std.Io.Mutex = .init,
+    semaphore: std.Io.Semaphore = .{},
+    allocator: std.mem.Allocator,
+    io: std.Io,
+
+    const Self = @This();
+    pub fn init(allocator: std.mem.Allocator, io: std.Io) Self {
+        return .{ .allocator = allocator, .io = io };
+    }
+    pub fn deinit(self: *Self) void {
+        self.mutex.lock(self.io) catch unreachable;
+        defer self.mutex.unlock(self.io);
+        self.queue.deinit(self.allocator);
+    }
+    fn push(self: *Self, message: ?MessageIterator.Message) !void {
+        {
+            self.mutex.lock(self.io) catch unreachable;
+            defer self.mutex.unlock(self.io);
+            try self.queue.append(self.allocator, message);
+        }
+        self.semaphore.post(self.io);
+    }
+    fn pop(self: *Self) ?MessageIterator.Message {
+        self.semaphore.wait(self.io) catch unreachable;
+        self.mutex.lock(self.io) catch unreachable;
+        const message = self.queue.orderedRemove(0);
+        self.mutex.unlock(self.io);
+        return message;
     }
 };
 
