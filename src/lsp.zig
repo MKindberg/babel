@@ -428,7 +428,8 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     logger.trace_value = notification.params.value;
                 },
                 rpc.MethodType.@"$/cancelRequest" => {
-                    // Cannot cancel since requests are not handled in parallel.
+                    // Handled in receive thread
+                    unreachable;
                 },
                 rpc.MethodType.@"textDocument/completion" => |request| {
                     if (self.callback_completion) |callback| {
@@ -555,6 +556,17 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 const message = it.next(allocator) catch |e| {
                     if (@TypeOf(e) == MessageIterator.Error) continue else unreachable;
                 };
+                if (message != null and message.?.decoded == rpc.MethodType.@"$/cancelRequest") {
+                    const id = message.?.decoded.@"$/cancelRequest".params.id;
+                    for (message_queue.queue.items, 0..) |msg, i| {
+                        if (@hasField(@TypeOf(msg.?), "id") and @field(msg.?, "id") == id) {
+                            message_queue.queue.orderedRemove(i);
+                            break;
+                        }
+                    }
+                    continue;
+                }
+
                 message_queue.push(message) catch unreachable;
                 if (message == null or message.?.decoded == rpc.MethodType.exit) break;
             }
@@ -651,9 +663,8 @@ const MessageQueue = struct {
     fn pop(self: *Self) ?MessageIterator.Message {
         self.semaphore.wait(self.io) catch unreachable;
         self.mutex.lock(self.io) catch unreachable;
-        const message = self.queue.orderedRemove(0);
-        self.mutex.unlock(self.io);
-        return message;
+        defer self.mutex.unlock(self.io);
+        return self.queue.orderedRemove(0);
     }
 };
 
