@@ -30,19 +30,19 @@ pub fn main(init: std.process.Init) !u8 {
 }
 
 fn setup(p: Lsp.SetupParameters) void {
-    p.server.registerCallback(.{ .OpenDocument = handleOpenDoc });
-    p.server.registerCallback(.{ .ChangeDocument = handleChangeDoc });
-    p.server.registerCallback(.{ .SaveDocument = handleSaveDoc });
-    p.server.registerCallback(.{ .CloseDocument = handleCloseDoc });
-    p.server.registerCallback(.{ .Hover = handleHover });
-    p.server.registerCallback(.{ .CodeAction = handleCodeAction });
+    p.server.registerCallback(.{ .@"textDocument/didOpen" = handleOpenDoc });
+    p.server.registerCallback(.{ .@"textDocument/didChange" = handleChangeDoc });
+    p.server.registerCallback(.{ .@"textDocument/didSave" = handleSaveDoc });
+    p.server.registerCallback(.{ .@"textDocument/didClose" = handleCloseDoc });
+    p.server.registerCallback(.{ .@"textDocument/hover" = handleHover });
+    p.server.registerCallback(.{ .@"textDocument/codeAction" = handleCodeAction });
 
-    p.server.registerCallback(.{ .GoToDeclaration = handleGoToDeclaration });
-    p.server.registerCallback(.{ .GoToDefinition = handleGotoDefinition });
-    p.server.registerCallback(.{ .GoToTypeDefinition = handleGoToTypeDefinition });
-    p.server.registerCallback(.{ .GoToImplementation = handleGoToImplementation });
-    p.server.registerCallback(.{ .FindReferences = handleFindReferences });
-    p.server.registerCallback(.{ .Formatting = handleFormat });
+    p.server.registerCallback(.{ .@"textDocument/declaration" = handleGoToDeclaration });
+    p.server.registerCallback(.{ .@"textDocument/definition" = handleGotoDefinition });
+    p.server.registerCallback(.{ .@"textDocument/typeDefinition" = handleGoToTypeDefinition });
+    p.server.registerCallback(.{ .@"textDocument/implementation" = handleGoToImplementation });
+    p.server.registerCallback(.{ .@"textDocument/references" = handleFindReferences });
+    p.server.registerCallback(.{ .@"textDocument/formatting" = handleFormat });
 }
 
 fn handleOpenDoc(p: Lsp.OpenDocumentParameters) void {

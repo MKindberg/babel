@@ -12,6 +12,8 @@ pub const fileLog = logger.fileLog;
 pub const BasicDocument = @import("document.zig").Document;
 pub const TreeSitterDocument = if (build_options.use_tree_sitter) @import("tree-sitter-document.zig").Document else @compileError("Must set use_tree_sitter=true to use TreeSitterDocument");
 
+pub const MethodType = rpc.MethodType;
+
 pub const LspSettings = struct {
     /// A modifiable optional of this type is passed to each callback in the file context.
     state_type: type = void,
@@ -102,28 +104,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
 
         setup_function: ?*const SetupFunction = null,
 
-        callback_doc_open: ?*const OpenDocumentCallback = null,
-        callback_doc_change: ?*const ChangeDocumentCallback = null,
-        callback_doc_save: ?*const SaveDocumentCallback = null,
-        callback_doc_close: ?*const CloseDocumentCallback = null,
-        callback_hover: ?*const HoverCallback = null,
-        callback_codeAction: ?*const CodeActionCallback = null,
-
-        callback_goto_definition: ?*const GoToDefinitionCallback = null,
-        callback_goto_declaration: ?*const GoToDeclarationCallback = null,
-        callback_goto_type_definition: ?*const GoToTypeDefinitionCallback = null,
-        callback_goto_implementation: ?*const GoToImplementationCallback = null,
-        callback_find_references: ?*const FindReferencesCallback = null,
-
-        callback_completion: ?*const CompletionCallback = null,
-
-        callback_formatting: ?*const FormattingCallback = null,
-        callback_range_formatting: ?*const RangeFormattingCallback = null,
-
-        callback_color: ?*const ColorCallback = null,
-
-        callback_code_lens: ?*const CodeLensCallback = null,
-
+        callbacks: [@typeInfo(@typeInfo(Callback).@"union".tag_type.?).@"enum".fields.len]?Callback,
         contexts: std.StringHashMap(Context),
         server_data: types.ServerData,
         allocator: std.mem.Allocator,
@@ -162,7 +143,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
 
         const Self = @This();
         pub fn init(allocator: std.mem.Allocator, io: std.Io, input_stream: *std.Io.Reader, output_stream: *std.Io.Writer, server_info: types.ServerInfo) Self {
-            return Self{
+            var self = Self{
                 .allocator = allocator,
                 .io = io,
                 .input_stream = input_stream,
@@ -173,8 +154,11 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         .change = settings.document_sync,
                     } },
                 },
+                .callbacks = undefined,
                 .contexts = std.StringHashMap(Context).init(allocator),
             };
+            self.callbacks = std.mem.zeroes(@TypeOf(self.callbacks));
+            return self;
         }
 
         pub fn deinit(self: *Self) void {
@@ -186,81 +170,73 @@ pub fn Lsp(comptime settings: LspSettings) type {
             self.contexts.deinit();
         }
 
-        pub const Callback = union(enum) {
-            OpenDocument: OpenDocumentCallback,
-            ChangeDocument: ChangeDocumentCallback,
-            SaveDocument: SaveDocumentCallback,
-            CloseDocument: CloseDocumentCallback,
-            Hover: HoverCallback,
-            CodeAction: CodeActionCallback,
-            GoToDefinition: GoToDefinitionCallback,
-            GoToDeclaration: GoToDeclarationCallback,
-            GoToTypeDefinition: GoToTypeDefinitionCallback,
-            GoToImplementation: GoToImplementationCallback,
-            FindReferences: FindReferencesCallback,
-            Completion: CompletionCallback,
-            Formatting: FormattingCallback,
-            RangeFormatting: RangeFormattingCallback,
-            Color: ColorCallback,
-            CodeLens: CodeLensCallback,
+        pub const Callback = union(@typeInfo(MethodType).@"union".tag_type.?) {
+            initialize: void,
+            @"textDocument/hover": *const HoverCallback,
+            @"textDocument/declaration": *const GoToDeclarationCallback,
+            @"textDocument/definition": *const GoToDefinitionCallback,
+            @"textDocument/typeDefinition": *const GoToTypeDefinitionCallback,
+            @"textDocument/implementation": *const GoToImplementationCallback,
+            @"textDocument/references": *const FindReferencesCallback,
+            @"textDocument/codeAction": *const CodeActionCallback,
+            shutdown: void,
+            @"textDocument/completion": *const CompletionCallback,
+            @"textDocument/formatting": *const FormattingCallback,
+            @"textDocument/rangeFormatting": *const RangeFormattingCallback,
+            @"textDocument/documentColor": *const ColorCallback,
+            @"textDocument/codeLens": *const CodeLensCallback,
+            initialized: void,
+            @"textDocument/didOpen": *const OpenDocumentCallback,
+            @"textDocument/didChange": *const ChangeDocumentCallback,
+            @"textDocument/didSave": *const SaveDocumentCallback,
+            @"textDocument/didClose": *const CloseDocumentCallback,
+            exit: void,
+            @"$/setTrace": void,
+            @"$/cancelRequest": void,
         };
         pub fn registerCallback(self: *Self, callback: Callback) void {
+            self.callbacks[@intFromEnum(callback)] = callback;
             switch (callback) {
-                .OpenDocument => |c| self.callback_doc_open = c,
-                .ChangeDocument => |c| self.callback_doc_change = c,
-                .SaveDocument => |c| {
-                    self.callback_doc_save = c;
+                .@"textDocument/didSave" => {
                     self.server_data.capabilities.textDocumentSync.save = .{ .includeText = settings.full_text_on_save };
                 },
-                .CloseDocument => |c| self.callback_doc_close = c,
-                .Hover => |c| {
-                    self.callback_hover = c;
+                .@"textDocument/hover" => {
                     self.server_data.capabilities.hoverProvider = true;
                 },
-                .CodeAction => |c| {
-                    self.callback_codeAction = c;
+                .@"textDocument/codeAction" => {
                     self.server_data.capabilities.codeActionProvider = true;
                 },
-                .GoToDefinition => |c| {
-                    self.callback_goto_definition = c;
+                .@"textDocument/definition" => {
                     self.server_data.capabilities.definitionProvider = true;
                 },
-                .GoToDeclaration => |c| {
-                    self.callback_goto_declaration = c;
+                .@"textDocument/declaration" => {
                     self.server_data.capabilities.declarationProvider = true;
                 },
-                .GoToTypeDefinition => |c| {
-                    self.callback_goto_type_definition = c;
+                .@"textDocument/typeDefinition" => {
                     self.server_data.capabilities.typeDefinitionProvider = true;
                 },
-                .GoToImplementation => |c| {
-                    self.callback_goto_implementation = c;
+                .@"textDocument/implementation" => {
                     self.server_data.capabilities.implementationProvider = true;
                 },
-                .FindReferences => |c| {
-                    self.callback_find_references = c;
+                .@"textDocument/references" => {
                     self.server_data.capabilities.referencesProvider = true;
                 },
-                .Completion => |c| {
-                    self.callback_completion = c;
+                .@"textDocument/completion" => {
                     self.server_data.capabilities.completionProvider = .{};
                 },
-                .Formatting => |c| {
-                    self.callback_formatting = c;
+                .@"textDocument/formatting" => {
                     self.server_data.capabilities.documentFormattingProvider = true;
                 },
-                .RangeFormatting => |c| {
-                    self.callback_range_formatting = c;
+                .@"textDocument/rangeFormatting" => {
                     self.server_data.capabilities.documentRangeFormattingProvider = true;
                 },
-                .Color => |c| {
-                    self.callback_color = c;
+                .@"textDocument/documentColor" => {
                     self.server_data.capabilities.colorProvider = true;
                 },
-                .CodeLens => |c| {
-                    self.callback_code_lens = c;
+                .@"textDocument/codeLens" => {
                     self.server_data.capabilities.codeLensProvider = .{};
                 },
+                else => {},
             }
             std.log.debug("Registered callback for {s}", .{@tagName(callback)});
         }
@@ -328,29 +304,32 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 rpc.MethodType.initialized => {
                     self.server_state = .Running;
                 },
-                rpc.MethodType.@"textDocument/didOpen" => |notification| {
+                inline rpc.MethodType.@"textDocument/didOpen" => |notification, tag| {
                     const params = notification.params;
                     try openDocument(self, params.textDocument.uri, params.textDocument.languageId, params.textDocument.text);
 
-                    if (self.callback_doc_open) |callback| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
                         callback(.{ .arena = arena, .gpa = self.allocator, .io = self.io, .context = context });
                     }
                 },
-                rpc.MethodType.@"textDocument/didChange" => |notification| {
+                inline rpc.MethodType.@"textDocument/didChange" => |notification, tag| {
                     const params = notification.params;
                     const context = self.contexts.getPtr(params.textDocument.uri).?;
                     if (settings.update_doc_on_change) {
                         try context.document.updateAll(params.contentChanges);
                     }
 
-                    if (self.callback_doc_change) |callback| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         callback(.{ .arena = arena, .gpa = self.allocator, .io = self.io, .context = context, .changes = params.contentChanges });
                     }
                 },
-                rpc.MethodType.@"textDocument/didSave" => |notification| {
+                inline rpc.MethodType.@"textDocument/didSave" => |notification, tag| {
                     const params = notification.params;
-                    if (self.callback_doc_save) |callback| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
                         if (notification.params.text) |text| {
                             try context.document.update(.{ .text = text, .range = null });
@@ -358,18 +337,20 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         callback(.{ .arena = arena, .gpa = self.allocator, .io = self.io, .context = context });
                     }
                 },
-                rpc.MethodType.@"textDocument/didClose" => |notification| {
+                inline rpc.MethodType.@"textDocument/didClose" => |notification, tag| {
                     const params = notification.params;
 
                     var entry = self.contexts.fetchRemove(params.textDocument.uri) orelse break :matcher;
-                    if (self.callback_doc_close) |callback| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         var context = entry.value;
                         callback(.{ .arena = arena, .gpa = self.allocator, .io = self.io, .context = &context });
                     }
                     entry.value.document.deinit();
                 },
-                rpc.MethodType.@"textDocument/hover" => |request| {
-                    if (self.callback_hover) |callback| {
+                inline rpc.MethodType.@"textDocument/hover" => |request, tag| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         const params = request.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
 
@@ -380,8 +361,9 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         try self.writeResponse(allocator, response);
                     } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
-                rpc.MethodType.@"textDocument/codeAction" => |request| {
-                    if (self.callback_codeAction) |callback| {
+                inline rpc.MethodType.@"textDocument/codeAction" => |request, tag| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         const params = request.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
 
@@ -392,28 +374,33 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         try self.writeResponse(allocator, response);
                     } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
-                rpc.MethodType.@"textDocument/declaration" => |request| {
-                    if (self.callback_goto_declaration) |callback| {
+                inline rpc.MethodType.@"textDocument/declaration" => |request, tag| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         try self.handleGoTo(arena, request, callback);
                     } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
-                rpc.MethodType.@"textDocument/definition" => |request| {
-                    if (self.callback_goto_definition) |callback| {
+                inline rpc.MethodType.@"textDocument/definition" => |request, tag| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         try self.handleGoTo(arena, request, callback);
                     } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
-                rpc.MethodType.@"textDocument/typeDefinition" => |request| {
-                    if (self.callback_goto_type_definition) |callback| {
+                inline rpc.MethodType.@"textDocument/typeDefinition" => |request, tag| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         try self.handleGoTo(arena, request, callback);
                     } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
-                rpc.MethodType.@"textDocument/implementation" => |request| {
-                    if (self.callback_goto_implementation) |callback| {
+                inline rpc.MethodType.@"textDocument/implementation" => |request, tag| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         try self.handleGoTo(arena, request, callback);
                     } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
-                rpc.MethodType.@"textDocument/references" => |request| {
-                    if (self.callback_find_references) |callback| {
+                inline rpc.MethodType.@"textDocument/references" => |request, tag| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         const params = request.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
 
@@ -431,8 +418,9 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     // Handled in receive thread
                     unreachable;
                 },
-                rpc.MethodType.@"textDocument/completion" => |request| {
-                    if (self.callback_completion) |callback| {
+                inline rpc.MethodType.@"textDocument/completion" => |request, tag| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         const params = request.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
                         const response = if (callback(.{ .arena = arena, .gpa = self.allocator, .io = self.io, .context = context, .position = params.position })) |items|
@@ -442,8 +430,9 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         try self.writeResponse(allocator, response);
                     } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
-                rpc.MethodType.@"textDocument/formatting" => |request| {
-                    if (self.callback_formatting) |callback| {
+                inline rpc.MethodType.@"textDocument/formatting" => |request, tag| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         const params = request.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
                         const response = if (callback(.{ .arena = arena, .gpa = self.allocator, .io = self.io, .context = context, .options = params.options })) |items|
@@ -453,8 +442,9 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         try self.writeResponse(allocator, response);
                     } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
-                rpc.MethodType.@"textDocument/rangeFormatting" => |request| {
-                    if (self.callback_range_formatting) |callback| {
+                inline rpc.MethodType.@"textDocument/rangeFormatting" => |request, tag| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         const params = request.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
                         const response = if (callback(.{ .arena = arena, .gpa = self.allocator, .io = self.io, .context = context, .range = params.range, .options = params.options })) |items|
@@ -464,8 +454,9 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         try self.writeResponse(allocator, response);
                     } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
-                rpc.MethodType.@"textDocument/documentColor" => |request| {
-                    if (self.callback_color) |callback| {
+                inline rpc.MethodType.@"textDocument/documentColor" => |request, tag| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         const params = request.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
                         const items = callback(.{ .arena = arena, .gpa = self.allocator, .io = self.io, .context = context });
@@ -473,8 +464,9 @@ pub fn Lsp(comptime settings: LspSettings) type {
                         try self.writeResponse(allocator, response);
                     } else self.replyNoCallback(allocator, request, @tagName(msg));
                 },
-                rpc.MethodType.@"textDocument/codeLens" => |request| {
-                    if (self.callback_code_lens) |callback| {
+                inline rpc.MethodType.@"textDocument/codeLens" => |request, tag| {
+                    if (self.callbacks[@intFromEnum(tag)]) |c| {
+                        const callback = @field(c, @tagName(tag));
                         const params = request.params;
                         const context = self.contexts.getPtr(params.textDocument.uri).?;
                         const items = callback(.{ .arena = arena, .gpa = self.allocator, .io = self.io, .context = context });

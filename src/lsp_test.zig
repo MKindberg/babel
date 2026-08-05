@@ -92,7 +92,7 @@ test "formatting" {
     var writer = std.Io.Writer.Discarding.init(&.{}).writer;
 
     var server = Lsp(.{}).init(std.testing.allocator, std.testing.io, &reader, &writer, .{ .name = "testing" });
-    server.registerCallback(.{ .Formatting = formatCallback });
+    server.registerCallback(.{ .@"textDocument/formatting" = formatCallback });
     defer server.deinit();
     const res = try server.start(null);
 
