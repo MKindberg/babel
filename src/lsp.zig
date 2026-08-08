@@ -5,6 +5,8 @@ const rpc = @import("rpc.zig");
 const reader = @import("reader.zig");
 const build_options = @import("build_options");
 
+const method = @import("method.zig");
+
 pub const types = @import("types.zig");
 pub const logger = @import("logger.zig");
 pub const log = logger.log;
@@ -32,6 +34,8 @@ pub var test_output_file: ?[]const u8 = null;
 
 pub fn Lsp(comptime settings: LspSettings) type {
     return struct {
+        const Self = @This();
+        const method_specs = method.MethodSpecs(settings){};
         pub const Document = settings.document_type;
 
         pub const SetupParameters = struct { server: *Lsp(settings), initialize: types.Request.Initialize.Params };
@@ -141,7 +145,6 @@ pub fn Lsp(comptime settings: LspSettings) type {
             ShutdownErr,
         };
 
-        const Self = @This();
         pub fn init(allocator: std.mem.Allocator, io: std.Io, input_stream: *std.Io.Reader, output_stream: *std.Io.Writer, server_info: types.ServerInfo) Self {
             var self = Self{
                 .allocator = allocator,
@@ -197,46 +200,12 @@ pub fn Lsp(comptime settings: LspSettings) type {
         pub fn registerCallback(self: *Self, callback: Callback) void {
             self.callbacks[@intFromEnum(callback)] = callback;
             switch (callback) {
-                .@"textDocument/didSave" => {
-                    self.server_data.capabilities.textDocumentSync.save = .{ .includeText = settings.full_text_on_save };
+                inline else => |_, tag| {
+                    const spec = @field(method_specs, @tagName(tag));
+                    if (@hasDecl(@TypeOf(spec), "setCapability")) {
+                        @TypeOf(spec).setCapability(&self.server_data);
+                    }
                 },
-                .@"textDocument/hover" => {
-                    self.server_data.capabilities.hoverProvider = true;
-                },
-                .@"textDocument/codeAction" => {
-                    self.server_data.capabilities.codeActionProvider = true;
-                },
-                .@"textDocument/definition" => {
-                    self.server_data.capabilities.definitionProvider = true;
-                },
-                .@"textDocument/declaration" => {
-                    self.server_data.capabilities.declarationProvider = true;
-                },
-                .@"textDocument/typeDefinition" => {
-                    self.server_data.capabilities.typeDefinitionProvider = true;
-                },
-                .@"textDocument/implementation" => {
-                    self.server_data.capabilities.implementationProvider = true;
-                },
-                .@"textDocument/references" => {
-                    self.server_data.capabilities.referencesProvider = true;
-                },
-                .@"textDocument/completion" => {
-                    self.server_data.capabilities.completionProvider = .{};
-                },
-                .@"textDocument/formatting" => {
-                    self.server_data.capabilities.documentFormattingProvider = true;
-                },
-                .@"textDocument/rangeFormatting" => {
-                    self.server_data.capabilities.documentRangeFormattingProvider = true;
-                },
-                .@"textDocument/documentColor" => {
-                    self.server_data.capabilities.colorProvider = true;
-                },
-                .@"textDocument/codeLens" => {
-                    self.server_data.capabilities.codeLensProvider = .{};
-                },
-                else => {},
             }
             std.log.debug("Registered callback for {s}", .{@tagName(callback)});
         }
