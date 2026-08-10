@@ -2,9 +2,10 @@ const std = @import("std");
 
 const types = @import("types.zig");
 const rpc = @import("rpc.zig");
+const logger = @import("logger.zig");
 const LspSettings = @import("lsp.zig").LspSettings;
 
-pub fn MethodSpecs(settings: LspSettings) type {
+pub fn MethodSpecs(Lsp: type, settings: LspSettings) type {
     const tag_type = @typeInfo(rpc.MethodType).@"union".tag_type.?;
     const tags = @typeInfo(tag_type).@"enum".fields;
     var field_names: [tags.len][]const u8 = undefined;
@@ -78,16 +79,43 @@ pub fn MethodSpecs(settings: LspSettings) type {
                     }
                 },
                 .initialized => struct {},
-                .@"textDocument/didOpen" => struct {},
-                .@"textDocument/didChange" => struct {},
+                .@"textDocument/didOpen" => struct {
+                    pub fn preCallback(lsp: *Lsp, params: types.Notification.DidOpenTextDocument.Params) !void {
+                        try lsp.openDocument(params.textDocument.uri, params.textDocument.languageId, params.textDocument.text);
+                    }
+                },
+                .@"textDocument/didChange" => struct {
+                    pub fn preCallback(lsp: *Lsp, params: types.Notification.DidChangeTextDocument.Params) !void {
+                        const context = lsp.contexts.getPtr(params.textDocument.uri).?;
+                        if (settings.update_doc_on_change) {
+                            try context.document.updateAll(params.contentChanges);
+                        }
+                    }
+                },
                 .@"textDocument/didSave" => struct {
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.textDocumentSync.save = .{ .includeText = settings.full_text_on_save };
                     }
+                    pub fn preCallback(lsp: *Lsp, params: types.Notification.DidSaveTextDocument.Params) !void {
+                        const context = lsp.contexts.getPtr(params.textDocument.uri).?;
+                        if (params.text) |text| {
+                            try context.document.update(.{ .text = text, .range = null });
+                        }
+                    }
                 },
-                .@"textDocument/didClose" => struct {},
+                .@"textDocument/didClose" => struct {
+                    pub fn postCallback(lsp: *Lsp, params: types.Notification.DidCloseTextDocument.Params) !void {
+                        var entry = lsp.contexts.fetchRemove(params.textDocument.uri).?;
+                        lsp.allocator.free(entry.key);
+                        entry.value.document.deinit();
+                    }
+                },
                 .exit => struct {},
-                .@"$/setTrace" => struct {},
+                .@"$/setTrace" => struct {
+                    pub fn preCallback(_: *Lsp, params: types.Notification.SetTrace.Params) !void {
+                        logger.trace_value = params.value;
+                    }
+                },
                 .@"$/cancelRequest" => struct {},
             };
         field_attrs[i] = .{ .default_value_ptr = &field_types[i]{} };

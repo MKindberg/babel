@@ -35,7 +35,7 @@ pub var test_output_file: ?[]const u8 = null;
 pub fn Lsp(comptime settings: LspSettings) type {
     return struct {
         const Self = @This();
-        const method_specs = method.MethodSpecs(settings){};
+        const method_specs = method.MethodSpecs(Self, settings){};
         pub const Document = settings.document_type;
 
         pub const SetupParameters = struct { server: *Lsp(settings), initialize: types.Request.Initialize.Params };
@@ -264,7 +264,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 return RunState.Run;
             }
 
-            matcher: switch (msg) {
+            switch (msg) {
                 rpc.MethodType.initialize => |request| {
                     if (!self.server_data.capabilities.textDocumentSync.openClose) @panic("TextDocumentSync.OpenClose must be true");
                     try self.handleInitialize(allocator, request);
@@ -273,49 +273,23 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 rpc.MethodType.initialized => {
                     self.server_state = .Running;
                 },
-                inline rpc.MethodType.@"textDocument/didOpen" => |notification, tag| {
-                    const params = notification.params;
-                    try openDocument(self, params.textDocument.uri, params.textDocument.languageId, params.textDocument.text);
+                inline else => |message, tag| {
+                    const params = message.params;
+                    const spec = @field(method_specs, @tagName(tag));
 
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        callback(.{ .arena = arena, .context = context, .params = params });
+                    if (@hasDecl(@TypeOf(spec), "preCallback")) {
+                        try @TypeOf(spec).preCallback(self, params);
                     }
-                },
-                inline rpc.MethodType.@"textDocument/didChange" => |notification, tag| {
-                    const params = notification.params;
-                    const context = self.contexts.getPtr(params.textDocument.uri).?;
-                    if (settings.update_doc_on_change) {
-                        try context.document.updateAll(params.contentChanges);
-                    }
-
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        callback(.{ .arena = arena, .context = context, .params = params });
-                    }
-                },
-                inline rpc.MethodType.@"textDocument/didSave" => |notification, tag| {
-                    const params = notification.params;
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        if (notification.params.text) |text| {
-                            try context.document.update(.{ .text = text, .range = null });
+                    if (@FieldType(Callback, @tagName(tag)) != void) {
+                        if (self.callbacks[@intFromEnum(tag)]) |c| {
+                            const callback = @field(c, @tagName(tag));
+                            const context = self.contexts.getPtr(params.textDocument.uri).?;
+                            callback(.{ .arena = arena, .context = context, .params = params });
                         }
-                        callback(.{ .arena = arena, .context = context, .params = params });
                     }
-                },
-                inline rpc.MethodType.@"textDocument/didClose" => |notification, tag| {
-                    const params = notification.params;
-
-                    var entry = self.contexts.fetchRemove(params.textDocument.uri) orelse break :matcher;
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        var context = entry.value;
-                        callback(.{ .arena = arena, .context = &context, .params = params });
+                    if (@hasDecl(@TypeOf(spec), "postCallback")) {
+                        try @TypeOf(spec).postCallback(self, params);
                     }
-                    entry.value.document.deinit();
                 },
                 inline rpc.MethodType.@"textDocument/hover" => |request, tag| {
                     if (self.callbacks[@intFromEnum(tag)]) |c| {
@@ -379,13 +353,6 @@ pub fn Lsp(comptime settings: LspSettings) type {
                             types.Response.MultiLocationResponse{ .id = request.id };
                         try self.writeResponse(allocator, response);
                     } else self.replyNoCallback(allocator, request, @tagName(msg));
-                },
-                rpc.MethodType.@"$/setTrace" => |notification| {
-                    logger.trace_value = notification.params.value;
-                },
-                rpc.MethodType.@"$/cancelRequest" => {
-                    // Handled in receive thread
-                    unreachable;
                 },
                 inline rpc.MethodType.@"textDocument/completion" => |request, tag| {
                     if (self.callbacks[@intFromEnum(tag)]) |c| {
@@ -499,7 +466,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
             try writeResponseNoCheck(allocator, self.output_stream, response_msg);
         }
 
-        fn openDocument(self: *Self, name: []const u8, language: []const u8, content: []const u8) !void {
+        pub fn openDocument(self: *Self, name: []const u8, language: []const u8, content: []const u8) !void {
             const context =
                 Context{ .document = try Document.init(self.allocator, name, language, content), .server = self };
             try self.contexts.put(try self.allocator.dupe(u8, name), context);
