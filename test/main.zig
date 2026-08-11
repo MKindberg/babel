@@ -64,7 +64,7 @@ fn handleSaveDoc(p: Lsp.SaveDocumentParameters) void {
     const io = p.context.server.io;
     _ = p.context.state.?.writeStreamingAll(io, "Saved document\n") catch unreachable;
 }
-fn handleHover(p: Lsp.HoverParameters) ?[]const u8 {
+fn handleHover(p: Lsp.HoverParameters) Lsp.HoverReturn {
     const io = p.context.server.io;
     _ = p.context.state.?.writeStreamingAll(io, "Hover\n") catch unreachable;
     return null;

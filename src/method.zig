@@ -18,62 +18,74 @@ pub fn MethodSpecs(Lsp: type, settings: LspSettings) type {
             switch (tag) {
                 .initialize => struct {},
                 .@"textDocument/hover" => struct {
+                    pub const response_type = types.Response.Hover;
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.hoverProvider = true;
                     }
                 },
                 .@"textDocument/declaration" => struct {
+                    pub const response_type = types.Response.LocationResponse;
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.declarationProvider = true;
                     }
                 },
                 .@"textDocument/definition" => struct {
+                    pub const response_type = types.Response.LocationResponse;
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.definitionProvider = true;
                     }
                 },
                 .@"textDocument/typeDefinition" => struct {
+                    pub const response_type = types.Response.LocationResponse;
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.typeDefinitionProvider = true;
                     }
                 },
                 .@"textDocument/implementation" => struct {
+                    pub const response_type = types.Response.LocationResponse;
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.implementationProvider = true;
                     }
                 },
                 .@"textDocument/references" => struct {
+                    pub const response_type = types.Response.MultiLocationResponse;
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.referencesProvider = true;
                     }
                 },
                 .@"textDocument/codeAction" => struct {
+                    pub const response_type = types.Response.CodeAction;
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.codeActionProvider = true;
                     }
                 },
                 .shutdown => struct {},
                 .@"textDocument/completion" => struct {
+                    pub const response_type = types.Response.Completion;
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.completionProvider = .{};
                     }
                 },
                 .@"textDocument/formatting" => struct {
+                    pub const response_type = types.Response.Formatting;
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.documentFormattingProvider = true;
                     }
                 },
                 .@"textDocument/rangeFormatting" => struct {
+                    pub const response_type = types.Response.Formatting;
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.documentRangeFormattingProvider = true;
                     }
                 },
                 .@"textDocument/documentColor" => struct {
+                    pub const response_type = types.Response.Color;
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.colorProvider = true;
                     }
                 },
                 .@"textDocument/codeLens" => struct {
+                    pub const response_type = types.Response.CodeLens;
                     pub fn setCapability(server_data: *types.ServerData) void {
                         server_data.capabilities.codeLensProvider = .{};
                     }

@@ -579,19 +579,11 @@ pub const Response = struct {
         id: ID,
         result: ?Result = null,
 
-        const Result = struct {
+        pub const Result = struct {
             contents: []const u8,
         };
 
         const Self = @This();
-        pub fn init(id: ID, contents: []const u8) Self {
-            return Self{
-                .id = id,
-                .result = .{
-                    .contents = contents,
-                },
-            };
-        }
     };
 
     pub const CodeAction = struct {
@@ -686,7 +678,7 @@ pub const Response = struct {
     pub const Color = struct {
         jsonrpc: []const u8 = "2.0",
         id: ID,
-        result: []const ColorInformation,
+        result: []const ColorInformation = &[_]ColorInformation{},
     };
 
     pub const CodeLens = struct {

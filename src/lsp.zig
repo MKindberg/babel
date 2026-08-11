@@ -59,7 +59,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
         pub const CloseDocumentCallback = fn (_: CloseDocumentParameters) CloseDocumentReturn;
 
         pub const HoverParameters = struct { arena: *std.heap.ArenaAllocator, context: *Context, params: types.PositionParams };
-        pub const HoverReturn = ?[]const u8;
+        pub const HoverReturn = ?types.Response.Hover.Result;
         pub const HoverCallback = fn (_: HoverParameters) HoverReturn;
 
         pub const CodeActionParameters = struct { arena: *std.heap.ArenaAllocator, context: *Context, params: types.Request.CodeAction.Params };
@@ -99,7 +99,7 @@ pub fn Lsp(comptime settings: LspSettings) type {
         pub const RangeFormattingCallback = fn (_: RangeFormattingParameters) RangeFormattingReturn;
 
         pub const ColorParameters = struct { arena: *std.heap.ArenaAllocator, context: *Context, params: types.Request.Color.Params };
-        pub const ColorReturn = []const types.ColorInformation;
+        pub const ColorReturn = ?[]const types.ColorInformation;
         pub const ColorCallback = fn (_: ColorParameters) ColorReturn;
 
         pub const CodeLensParameters = struct { arena: *std.heap.ArenaAllocator, context: *Context, params: types.Request.CodeLens.Params };
@@ -273,143 +273,6 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 rpc.MethodType.initialized => {
                     self.server_state = .Running;
                 },
-                inline else => |message, tag| {
-                    const params = message.params;
-                    const spec = @field(method_specs, @tagName(tag));
-
-                    if (@hasDecl(@TypeOf(spec), "preCallback")) {
-                        try @TypeOf(spec).preCallback(self, params);
-                    }
-                    if (@FieldType(Callback, @tagName(tag)) != void) {
-                        if (self.callbacks[@intFromEnum(tag)]) |c| {
-                            const callback = @field(c, @tagName(tag));
-                            const context = self.contexts.getPtr(params.textDocument.uri).?;
-                            callback(.{ .arena = arena, .context = context, .params = params });
-                        }
-                    }
-                    if (@hasDecl(@TypeOf(spec), "postCallback")) {
-                        try @TypeOf(spec).postCallback(self, params);
-                    }
-                },
-                inline rpc.MethodType.@"textDocument/hover" => |request, tag| {
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        const params = request.params;
-                        const context = self.contexts.getPtr(params.textDocument.uri).?;
-
-                        const response = if (callback(.{ .arena = arena, .context = context, .params = params })) |message|
-                            types.Response.Hover.init(request.id, message)
-                        else
-                            types.Response.Hover{ .id = request.id };
-                        try self.writeResponse(allocator, response);
-                    } else self.replyNoCallback(allocator, request, @tagName(msg));
-                },
-                inline rpc.MethodType.@"textDocument/codeAction" => |request, tag| {
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        const params = request.params;
-                        const context = self.contexts.getPtr(params.textDocument.uri).?;
-
-                        const response = if (callback(.{ .arena = arena, .context = context, .params = params })) |results|
-                            types.Response.CodeAction{ .id = request.id, .result = results }
-                        else
-                            types.Response.CodeAction{ .id = request.id };
-                        try self.writeResponse(allocator, response);
-                    } else self.replyNoCallback(allocator, request, @tagName(msg));
-                },
-                inline rpc.MethodType.@"textDocument/declaration" => |request, tag| {
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        try self.handleGoTo(arena, request, callback);
-                    } else self.replyNoCallback(allocator, request, @tagName(msg));
-                },
-                inline rpc.MethodType.@"textDocument/definition" => |request, tag| {
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        try self.handleGoTo(arena, request, callback);
-                    } else self.replyNoCallback(allocator, request, @tagName(msg));
-                },
-                inline rpc.MethodType.@"textDocument/typeDefinition" => |request, tag| {
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        try self.handleGoTo(arena, request, callback);
-                    } else self.replyNoCallback(allocator, request, @tagName(msg));
-                },
-                inline rpc.MethodType.@"textDocument/implementation" => |request, tag| {
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        try self.handleGoTo(arena, request, callback);
-                    } else self.replyNoCallback(allocator, request, @tagName(msg));
-                },
-                inline rpc.MethodType.@"textDocument/references" => |request, tag| {
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        const params = request.params;
-                        const context = self.contexts.getPtr(params.textDocument.uri).?;
-
-                        const response = if (callback(.{ .arena = arena, .context = context, .params = params })) |locations|
-                            types.Response.MultiLocationResponse.init(request.id, locations)
-                        else
-                            types.Response.MultiLocationResponse{ .id = request.id };
-                        try self.writeResponse(allocator, response);
-                    } else self.replyNoCallback(allocator, request, @tagName(msg));
-                },
-                inline rpc.MethodType.@"textDocument/completion" => |request, tag| {
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        const params = request.params;
-                        const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        const response = if (callback(.{ .arena = arena, .context = context, .params = params })) |items|
-                            types.Response.Completion{ .id = request.id, .result = items }
-                        else
-                            types.Response.Completion{ .id = request.id };
-                        try self.writeResponse(allocator, response);
-                    } else self.replyNoCallback(allocator, request, @tagName(msg));
-                },
-                inline rpc.MethodType.@"textDocument/formatting" => |request, tag| {
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        const params = request.params;
-                        const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        const response = if (callback(.{ .arena = arena, .context = context, .params = params })) |items|
-                            types.Response.Formatting{ .id = request.id, .result = items }
-                        else
-                            types.Response.Formatting{ .id = request.id };
-                        try self.writeResponse(allocator, response);
-                    } else self.replyNoCallback(allocator, request, @tagName(msg));
-                },
-                inline rpc.MethodType.@"textDocument/rangeFormatting" => |request, tag| {
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        const params = request.params;
-                        const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        const response = if (callback(.{ .arena = arena, .context = context, .params = params })) |items|
-                            types.Response.Formatting{ .id = request.id, .result = items }
-                        else
-                            types.Response.Formatting{ .id = request.id };
-                        try self.writeResponse(allocator, response);
-                    } else self.replyNoCallback(allocator, request, @tagName(msg));
-                },
-                inline rpc.MethodType.@"textDocument/documentColor" => |request, tag| {
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        const params = request.params;
-                        const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        const items = callback(.{ .arena = arena, .context = context, .params = params });
-                        const response = types.Response.Color{ .id = request.id, .result = items };
-                        try self.writeResponse(allocator, response);
-                    } else self.replyNoCallback(allocator, request, @tagName(msg));
-                },
-                inline rpc.MethodType.@"textDocument/codeLens" => |request, tag| {
-                    if (self.callbacks[@intFromEnum(tag)]) |c| {
-                        const callback = @field(c, @tagName(tag));
-                        const params = request.params;
-                        const context = self.contexts.getPtr(params.textDocument.uri).?;
-                        const items = callback(.{ .arena = arena, .context = context, .params = params });
-                        const response = types.Response.CodeLens{ .id = request.id, .result = items };
-                        try self.writeResponse(allocator, response);
-                    }
-                },
                 rpc.MethodType.shutdown => |request| {
                     try self.handleShutdown(allocator, request);
                     self.server_state = .Shutdown;
@@ -420,18 +283,38 @@ pub fn Lsp(comptime settings: LspSettings) type {
                     }
                     return RunState.ShutdownErr;
                 },
+                inline else => |message, tag| {
+                    const params = message.params;
+                    const spec = @field(method_specs, @tagName(tag));
+                    const spec_type = @TypeOf(spec);
+
+                    if (@hasDecl(spec_type, "preCallback")) {
+                        try @TypeOf(spec).preCallback(self, params);
+                    }
+                    if (@FieldType(Callback, @tagName(tag)) != void) {
+                        if (self.callbacks[@intFromEnum(tag)]) |c| {
+                            const callback = @field(c, @tagName(tag));
+                            const context = self.contexts.getPtr(params.textDocument.uri).?;
+                            const ret = callback(.{ .arena = arena, .context = context, .params = params });
+
+                            if (@hasDecl(spec_type, "response_type")) {
+                                const response: spec_type.response_type =
+                                    if (ret) |r|
+                                        .{ .id = message.id, .result = r }
+                                    else
+                                        .{ .id = message.id };
+                                try self.writeResponse(allocator, response);
+                            }
+                        } else if (@hasDecl(spec_type, "response_type")) {
+                            self.replyNoCallback(allocator, message, @tagName(tag));
+                        }
+                    }
+                    if (@hasDecl(@TypeOf(spec), "postCallback")) {
+                        try @TypeOf(spec).postCallback(self, params);
+                    }
+                },
             }
             return RunState.Run;
-        }
-
-        fn handleGoTo(self: *Self, arena: *std.heap.ArenaAllocator, request: anytype, callback: anytype) !void {
-            const params = request.params;
-            const context = self.contexts.getPtr(params.textDocument.uri).?;
-            const response = if (callback(.{ .arena = arena, .context = context, .params = params })) |location|
-                types.Response.LocationResponse.init(request.id, location)
-            else
-                types.Response.LocationResponse{ .id = request.id };
-            try self.writeResponse(arena.allocator(), response);
         }
 
         fn handleShutdown(self: Self, allocator: std.mem.Allocator, request: types.Request.Shutdown) !void {
