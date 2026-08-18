@@ -7,7 +7,7 @@ const Lsp = lsp.Lsp(.{
 
 const builtin = @import("builtin");
 
-pub const std_oions = std.Options{
+pub const std_options = std.Options{
     .log_level = .debug,
     .logFn = lsp.log,
 };
