@@ -12,6 +12,7 @@ pub fn build(b: *std.Build) void {
         .@"test" = b.step("test", "Run nvim test"),
         .unittest = b.step("unittest", "Run unit tests"),
         .coverage = b.step("coverage", "Run unit tests with kcov coverage"),
+        .examples = b.step("examples", "Build the example project (checks it still matches the lsp API)"),
     };
 
     const modules = createModules(b, build_options);
@@ -20,6 +21,7 @@ pub fn build(b: *std.Build) void {
     buildTest(b, build_steps.@"test", modules.lsp, build_options);
     buildUnitTest(b, build_steps.unittest, build_options);
     buildCovTest(b, build_steps.coverage, build_options);
+    buildExamples(b, build_steps.examples);
 }
 
 fn createModules(b: *std.Build, options: BuildOptions) struct {
@@ -108,4 +110,18 @@ fn buildCovTest(b: *std.Build, step: *std.Build.Step, options: BuildOptions) voi
     const run_cov_test = b.addRunArtifact(cov_test);
     run_cov_test.has_side_effects = true;
     step.dependOn(&run_cov_test.step);
+}
+
+/// examples/ is a standalone project demonstrating how a downstream consumer
+/// would depend on babel (its build.zig.zon depends on this repo via a
+/// relative path). It's built by shelling out to a fresh `zig build` invocation
+/// rather than pulling it in with `b.dependency`, since the latter would make
+/// this build.zig's own build() depend on itself (examples -> babel -> examples -> ...).
+/// This only checks that the example still compiles against the current lsp API.
+fn buildExamples(b: *std.Build, step: *std.Build.Step) void {
+    const run_examples = std.Build.Step.Run.create(b, "build examples");
+    run_examples.addArgs(&.{ b.graph.zig_exe, "build" });
+    run_examples.setCwd(b.path("examples"));
+    run_examples.has_side_effects = true;
+    step.dependOn(&run_examples.step);
 }

@@ -1,0 +1,13 @@
+.{
+    .name = .babel_example,
+    .version = "0.0.0",
+    .dependencies = .{
+        .babel = .{ .path = ".." },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+    .fingerprint = 0x288b3e063e8feb5d,
+}

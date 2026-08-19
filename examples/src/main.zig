@@ -1,13 +1,3 @@
-# babel
-A framework for writing, or at least prototyping, language servers in Zig.
-It allows you to register callbacks that will be called when notifications or
-requests are received. In addition to this it will also keep track of and automatically
-update the documents being edited.
-
-## Usage
-
-### Creating the server
-```zig
 const std = @import("std");
 const lsp = @import("lsp");
 
@@ -88,33 +78,3 @@ fn handleHover(p: Lsp.HoverParameters) Lsp.HoverReturn {
     std.log.info("Hovering the word {s} at {d}:{d}", .{ word, p.params.position.line, p.params.position.character });
     return .{ .contents = word };
 }
-```
-
-### Build the server
-```zig
-const std = @import("std");
-
-pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-
-    // Build the server
-    const exe = b.addExecutable(.{
-        .name = "server_name",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-
-    // Add the dependency towards babel
-    const babel = b.dependency("babel", .{ .target = target, .optimize = optimize });
-
-    // Allow the server to import the lsp module from babel
-    const lsp = babel.module("lsp");
-    exe.root_module.addImport("lsp", lsp);
-
-    b.installArtifact(exe);
-}
-```
