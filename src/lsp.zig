@@ -369,12 +369,8 @@ pub fn Lsp(comptime settings: LspSettings) type {
                 };
                 if (message != null and message.?.decoded == rpc.MethodType.@"$/cancelRequest") {
                     const id = message.?.decoded.@"$/cancelRequest".params.id;
-                    for (message_queue.queue.items, 0..) |msg, i| {
-                        if (@hasField(@TypeOf(msg.?), "id") and @field(msg.?, "id") == id) {
-                            message_queue.queue.orderedRemove(i);
-                            break;
-                        }
-                    }
+                    message_queue.cancel(id) catch unreachable;
+                    message.?.deinit();
                     continue;
                 }
 
@@ -447,8 +443,18 @@ pub const MessageIterator = struct {
     }
 };
 
+fn messageId(decoded: rpc.MethodType) ?types.ID {
+    switch (decoded) {
+        inline else => |payload| {
+            if (@hasField(@TypeOf(payload), "id")) return payload.id;
+            return null;
+        },
+    }
+}
+
 const MessageQueue = struct {
     queue: std.ArrayList(?MessageIterator.Message) = .empty,
+    cancelled: std.AutoHashMapUnmanaged(types.ID, void) = .empty,
     mutex: std.Io.Mutex = .init,
     semaphore: std.Io.Semaphore = .{},
     allocator: std.mem.Allocator,
@@ -462,6 +468,7 @@ const MessageQueue = struct {
         self.mutex.lock(self.io) catch unreachable;
         defer self.mutex.unlock(self.io);
         self.queue.deinit(self.allocator);
+        self.cancelled.deinit(self.allocator);
     }
     fn push(self: *Self, message: ?MessageIterator.Message) !void {
         {
@@ -471,11 +478,27 @@ const MessageQueue = struct {
         }
         self.semaphore.post(self.io);
     }
-    fn pop(self: *Self) ?MessageIterator.Message {
-        self.semaphore.wait(self.io) catch unreachable;
+    fn cancel(self: *Self, id: types.ID) !void {
         self.mutex.lock(self.io) catch unreachable;
         defer self.mutex.unlock(self.io);
-        return self.queue.orderedRemove(0);
+        try self.cancelled.put(self.allocator, id, {});
+    }
+    fn pop(self: *Self) ?MessageIterator.Message {
+        while (true) {
+            self.semaphore.wait(self.io) catch unreachable;
+            self.mutex.lock(self.io) catch unreachable;
+            const message = self.queue.orderedRemove(0);
+            const skip = if (message) |m| blk: {
+                const id = messageId(m.decoded) orelse break :blk false;
+                break :blk self.cancelled.remove(id);
+            } else false;
+            self.mutex.unlock(self.io);
+            if (skip) {
+                message.?.deinit();
+                continue;
+            }
+            return message;
+        }
     }
 };
 
