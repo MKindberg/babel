@@ -107,16 +107,24 @@ fn handleFormat(p: Lsp.FormattingParameters) Lsp.FormattingReturn {
 
 test "Run nvim" {
     const io = std.testing.io;
-    const nvim_config =
+    const allocator = std.testing.allocator;
+
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    const tester_path = try std.Io.Dir.cwd().realPathFileAlloc(io, "zig-out/bin/test", allocator);
+    defer allocator.free(tester_path);
+
+    const nvim_config = try std.fmt.allocPrint(allocator,
         \\ vim.lsp.set_log_level("TRACE")
-        \\ vim.lsp.config.tester = {
-        \\     cmd = {"zig-out/bin/test"},
-        \\     filetypes = {"text"},
-        \\ }
+        \\ vim.lsp.config.tester = {{
+        \\     cmd = {{"{s}"}},
+        \\     filetypes = {{"text"}},
+        \\ }}
         \\ vim.lsp.enable("tester")
-    ;
-    std.Io.Dir.cwd().writeFile(io, .{ .sub_path = "nvim_config.lua", .data = nvim_config }) catch unreachable;
-    defer std.Io.Dir.cwd().deleteFile(io, "nvim_config.lua") catch {};
+    , .{tester_path});
+    defer allocator.free(nvim_config);
+    tmp_dir.dir.writeFile(io, .{ .sub_path = "nvim_config.lua", .data = nvim_config }) catch unreachable;
 
     const commands =
         \\vim.cmd(":norm itext")
@@ -131,26 +139,39 @@ test "Run nvim" {
         \\vim.lsp.buf.references()
         \\vim.cmd(":wq")
     ;
-    std.Io.Dir.cwd().writeFile(io, .{ .sub_path = "commands.lua", .data = commands }) catch unreachable;
-    defer std.Io.Dir.cwd().deleteFile(io, "commands.lua") catch {};
+    tmp_dir.dir.writeFile(io, .{ .sub_path = "commands.lua", .data = commands }) catch unreachable;
+
     const argv = [_][]const u8{
+        "timeout",
+        "-k",
+        "5",
+        "20",
         "nvim",
         "--headless",
         "-u",
         "nvim_config.lua",
         "test.txt",
         "-c",
-        "sleep 1", // ls doesn't start properly without this sleep
+        // Wait for the client to attach before commands.lua starts
+        "lua vim.wait(5000, function() return #vim.lsp.get_clients({ bufnr = 0 }) > 0 end, 100)",
         "-l",
         "commands.lua",
     };
-    var nvim_handle = try std.process.spawn(io, .{ .argv = &argv, .stdout = .ignore, .stderr = .ignore });
-
+    var nvim_handle = try std.process.spawn(io, .{
+        .argv = &argv,
+        .cwd = .{ .dir = tmp_dir.dir },
+        .stdout = .ignore,
+        .stderr = .ignore,
+    });
     const term = try nvim_handle.wait(io);
-    defer std.Io.Dir.cwd().deleteFile(io, "output.txt") catch {};
-    defer std.Io.Dir.cwd().deleteFile(io, "test.txt") catch {};
 
-    try std.testing.expectEqual(term.exited, 0);
+    switch (term) {
+        .exited => |code| try std.testing.expectEqual(0, code),
+        else => {
+            std.debug.print("nvim did not exit normally: {}\n", .{term});
+            return error.NvimError;
+        },
+    }
 
     const expected =
         \\Opened document
@@ -167,8 +188,8 @@ test "Run nvim" {
         \\Saved document
         \\
     ;
-    const actual = try std.Io.Dir.cwd().readFileAlloc(io, "output.txt", std.testing.allocator, std.Io.Limit.unlimited);
-    defer std.testing.allocator.free(actual);
+    const actual = try tmp_dir.dir.readFileAlloc(io, "output.txt", allocator, std.Io.Limit.unlimited);
+    defer allocator.free(actual);
 
     try std.testing.expectEqualStrings(expected, actual);
 }
