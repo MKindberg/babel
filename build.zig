@@ -38,14 +38,14 @@ fn createModules(b: *std.Build, options: BuildOptions) struct {
     };
 }
 
-fn addOptions(b: *std.Build, lsp: *std.Build.Module, build_options: BuildOptions) void {
+fn addOptions(b: *std.Build, lsp: *std.Build.Module, target_options: BuildOptions) void {
     const use_tree_sitter = b.option(bool, "use_tree_sitter", "Add support for tree-sitter via TreeSitterDocument") orelse false;
     const options = b.addOptions();
     options.addOption(bool, "use_tree_sitter", use_tree_sitter);
     lsp.addImport("build_options", options.createModule());
 
     if (use_tree_sitter) {
-        if (b.lazyDependency("tree_sitter", build_options)) |dep| {
+        if (b.lazyDependency("tree_sitter", target_options)) |dep| {
             lsp.addImport("tree-sitter", dep.module("tree_sitter"));
         }
     }
@@ -80,32 +80,29 @@ fn buildTest(
     step.dependOn(&run_test.step);
 }
 
-fn buildUnitTest(b: *std.Build, step: *std.Build.Step, options: BuildOptions) void {
-    const unit_test = b.addTest(.{
+fn createUnitTest(b: *std.Build, options: BuildOptions) *std.Build.Step.Compile {
+    const module = b.createModule(.{
+        .root_source_file = b.path("src/test.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+
+    return b.addTest(.{
         .name = "test-unit",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/test.zig"),
-            .target = options.target,
-            .optimize = options.optimize,
-        }),
+        .root_module = module,
         .filters = b.args orelse &.{},
     });
+}
+
+fn buildUnitTest(b: *std.Build, step: *std.Build.Step, options: BuildOptions) void {
+    const unit_test = createUnitTest(b, options);
     const run_unit_test = b.addRunArtifact(unit_test);
     step.dependOn(&run_unit_test.step);
 }
 
 fn buildCovTest(b: *std.Build, step: *std.Build.Step, options: BuildOptions) void {
-    const cov_test = b.addTest(.{
-        .name = "test-unit",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/test.zig"),
-            .target = options.target,
-            .optimize = options.optimize,
-        }),
-        .filters = b.args orelse &.{},
-        .use_llvm = true,
-    });
-
+    const cov_test = createUnitTest(b, options);
+    cov_test.use_llvm = true;
     cov_test.setExecCmd(&[_]?[]const u8{ "kcov", "--clean", "--include-pattern=src", "cov", null });
     const run_cov_test = b.addRunArtifact(cov_test);
     run_cov_test.has_side_effects = true;
