@@ -66,18 +66,22 @@ pub const Document = struct {
         const range_len = range_end - range_start;
         const new_len = self.text.len + text.len - range_len;
         const old_len = self.text.len;
-        if (new_len > self.data.len or new_len < self.data.len / 4) {
+
+        if (new_len > self.data.len) {
             self.data = try self.allocator.realloc(self.data, Document.allocationSize(new_len));
         }
 
         if (range_len > text.len) {
             std.mem.copyForwards(u8, self.data[range_start..], text);
-            std.mem.copyForwards(u8, self.data[range_start + text.len ..], self.data[range_end..]);
+            std.mem.copyForwards(u8, self.data[range_start + text.len ..], self.data[range_end..old_len]);
         } else if (range_len < text.len) {
             std.mem.copyBackwards(u8, self.data[range_end + (text.len - range_len) ..], self.data[range_end..old_len]);
             std.mem.copyForwards(u8, self.data[range_start..], text);
         } else {
             std.mem.copyForwards(u8, self.data[range_start..range_end], text);
+        }
+        if (new_len < self.data.len / 4) {
+            self.data = try self.allocator.realloc(self.data, Document.allocationSize(new_len));
         }
         @memset(self.data[new_len..], 0);
 

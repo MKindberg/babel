@@ -435,6 +435,7 @@ pub const MessageIterator = struct {
         defer self.body_buf.clearRetainingCapacity();
 
         var arena = std.heap.ArenaAllocator.init(allocator);
+        errdefer arena.deinit();
         const decoded = rpc.decodeMessage(arena.allocator(), self.body_buf.written()) catch |e| {
             std.log.warn("Failed to decode message: {any}\n", .{e});
             return Error.DecodeFailure;
@@ -508,7 +509,7 @@ pub fn writeResponseNoCheck(allocator: std.mem.Allocator, output_stream: *std.Io
     const response = try rpc.encodeMessage(allocator, msg);
     defer allocator.free(response);
 
-    _ = try output_stream.write(response);
+    _ = try output_stream.writeAll(response);
     try output_stream.flush();
 }
 
