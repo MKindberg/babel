@@ -40,14 +40,22 @@ pub const Document = struct {
 
     pub fn update(self: *Self, change: types.ChangeEvent) !void {
         var doc = &self.doc;
-        var tree: *ts.Tree = self.tree.?;
-        var parser: *ts.Parser = self.parser;
+        // Act as normal doc if no tree
+        const old_tree = self.tree orelse return doc.update(change);
+
+        const range = change.range orelse {
+            // Update full document
+            try doc.update(change);
+            self.tree = self.parser.parseString(doc.text, null);
+            old_tree.destroy();
+            return;
+        };
 
         var edit = ts.InputEdit{
-            .start_byte = @intCast(doc.posToIdx(change.range.?.start).?),
-            .old_end_byte = @intCast(doc.posToIdx(change.range.?.end).?),
-            .start_point = posToPoint(change.range.?.start),
-            .old_end_point = posToPoint(change.range.?.end),
+            .start_byte = @intCast(doc.posToIdx(range.start).?),
+            .old_end_byte = @intCast(doc.posToIdx(range.end).?),
+            .start_point = posToPoint(range.start),
+            .old_end_point = posToPoint(range.end),
             .new_end_byte = 0,
             .new_end_point = .{ .row = 0, .column = 0 },
         };
@@ -55,10 +63,9 @@ pub const Document = struct {
         edit.new_end_byte = @intCast(edit.start_byte + change.text.len);
         edit.new_end_point = posToPoint(doc.idxToPos(edit.new_end_byte).?);
 
-        tree.edit(edit);
-        tree = parser.parseString(doc.text, tree).?;
-        self.tree.?.destroy();
-        self.tree = tree;
+        old_tree.edit(edit);
+        self.tree = self.parser.parseString(doc.text, old_tree);
+        old_tree.destroy();
     }
 
     pub fn updateAll(self: *Self, changes: []const types.ChangeEvent) !void {

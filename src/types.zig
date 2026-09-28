@@ -997,7 +997,7 @@ pub const TraceValue = enum {
 pub const TextDocumentSyncOptions = struct {
     openClose: bool = true,
     change: TextDocumentSyncKind = .Incremental,
-    save: SaveOptions = .{},
+    save: ?SaveOptions = null,
 
     const SaveOptions = struct {
         includeText: ?bool = null,
