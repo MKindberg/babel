@@ -653,14 +653,13 @@ pub const Response = struct {
     pub const Shutdown = struct {
         jsonrpc: []const u8 = "2.0",
         id: ID,
-        result: void,
+        result: std.json.Value = .null,
 
         const Self = @This();
         pub fn init(request: Request.Shutdown) Self {
             return Self{
                 .jsonrpc = "2.0",
                 .id = request.id,
-                .result = {},
             };
         }
     };

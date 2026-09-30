@@ -124,6 +124,14 @@ test "encodeMessage" {
     try std.testing.expect(std.mem.eql(u8, "Content-Length: 15\r\n\r\n{\"x\":42,\"y\":37}", encoded));
 }
 
+test "encodeMessage shutdown response has null result" {
+    const allocator = std.testing.allocator;
+    const response = types.Response.Shutdown.init(.{ .id = @enumFromInt(4) });
+    const encoded = try encodeMessage(allocator, response);
+    defer allocator.free(encoded);
+    try std.testing.expect(std.mem.endsWith(u8, encoded, "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":null}"));
+}
+
 test "decodeMessage" {
     const msg = "{\"method\":\"initialize\",\"id\":37, \"params\": {}}";
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
